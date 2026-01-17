@@ -30,7 +30,7 @@ function IssuerStatus() {
           <div>
             <p className="text-sm font-semibold text-slate-700">Organization</p>
             <p className="text-lg font-bold text-slate-900">{status.orgName}</p>
-            <p className="text-sm text-slate-600">Type: {status.issuer_type === "COOP" ? "CO-OP (integrated)" : "Non CO-OP (platform-managed)"}</p>
+            <p className="text-sm text-slate-600">Issuer type: {status.issuerType}</p>
             <p className="text-sm text-slate-600">Environment: {status.environment}</p>
           </div>
           <div className="flex flex-col gap-2 items-end">
@@ -38,7 +38,7 @@ function IssuerStatus() {
               {status.status === "ACTIVE" ? <ShieldCheck className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
               {status.status}
             </Badge>
-            <Badge variant="info">Verification level: {status.verification_level === 0 ? "None" : status.verification_level === 1 ? "Domain verified" : "Legally verified"}</Badge>
+            <Badge variant="info">Verification level: {status.verificationLevel === 0 ? "None" : status.verificationLevel === 1 ? "Domain verified" : "Legally verified"}</Badge>
           </div>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
@@ -59,41 +59,42 @@ function IssuerStatus() {
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1">
             <p className="text-sm font-semibold text-slate-700">Verification proof</p>
-            {status.dns_proof && (
+            {status.dnsProof && (
               <div className="text-xs text-slate-600">
-                <p className="font-semibold">DNS proof record</p>
-                <p>Record: {status.dns_proof.recordId}</p>
-                <p>Hash: {status.dns_proof.domainHash}</p>
+                <p className="font-semibold">DNS proof</p>
+                <p>Record ID: {status.dnsProof.recordId}</p>
+                <p>Hash reference: {status.dnsProof.domainHash}</p>
               </div>
             )}
-            {status.legal_proof && (
+            {status.legalProof && (
               <div className="text-xs text-slate-600">
                 <p className="font-semibold">Legal proof record</p>
-                <p>Record: {status.legal_proof.recordId}</p>
-                <p>Hash: {status.legal_proof.legalDocHash}</p>
+                <p>Record ID: {status.legalProof.recordId}</p>
+                <p>Hash reference: {status.legalProof.legalDocHash}</p>
               </div>
             )}
-            {!status.dns_proof && !status.legal_proof && (
+            {!status.dnsProof && !status.legalProof && (
               <p className="text-xs text-slate-500">No verification proof yet.</p>
             )}
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
             <p className="text-sm font-semibold text-slate-700">Registry entry</p>
-            <p className="text-xs text-slate-600">Issuer type: {status.issuer_type}</p>
-            <p className="text-xs text-slate-600">Verification level: {status.verification_level}</p>
+            <p className="text-xs text-slate-600">Issuer type: {status.issuerType}</p>
+            <p className="text-xs text-slate-600">Verification level: {status.verificationLevel}</p>
             <p className="text-xs text-slate-600">Status: {status.status}</p>
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {status.verification_level < 2 && (
-            <Button variant="primary" onClick={() => window.location.href = "/issuer/verification"}>
-              Complete verification
-            </Button>
-          )}
-          {status.issuer_type === "COOP" && status.verification_level >= 1 && (
+          <Button variant="primary" onClick={() => window.location.href = "/issuer/verification"}>
+            Complete verification
+          </Button>
+          {status.issuerType === "CO-OP" && status.verificationLevel >= 1 && (
             <Button variant="secondary" onClick={() => window.location.href = "/issuer/issue"}>
               Issue credential
             </Button>
+          )}
+          {status.issuerType === "NON-CO-OP" && (
+            <Badge variant="warning">Issuing requires external verification</Badge>
           )}
         </div>
       </Card>

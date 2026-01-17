@@ -45,7 +45,7 @@ function IssuerLayout() {
     navigate("/");
   };
 
-  const disabled = status && (status.issuer_type === "NON_COOP");
+  const disabled = status && status.issuerType === "NON-CO-OP";
 
   return (
     <div className="min-h-screen bg-[#f4f7fb] flex text-slate-900">
@@ -69,7 +69,8 @@ function IssuerLayout() {
             const isIssue = item.to === "/issuer/issue";
             const isDisabled =
               (disabled && item.protected) ||
-              (isIssue && status && (status.verification_level || 0) < 1);
+              (isIssue && status && status.issuerType === "CO-OP" && (status.verificationLevel || 0) < 1) ||
+              (isIssue && status && status.issuerType === "NON-CO-OP");
             return (
               <NavLink
                 key={item.to}

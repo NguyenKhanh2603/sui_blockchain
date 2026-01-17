@@ -8,15 +8,24 @@ import { issuerService } from "../../services/issuerService";
 import { formatDate } from "../../utils/formatters";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
+import Input from "../../components/ui/Input";
+import { maskAddress } from "../../utils/address";
+
+const statusVariant = (status) => {
+  const key = (status || "").toUpperCase();
+  if (key === "ISSUED" || key === "VERIFIED") return "success";
+  if (key === "REVOKED" || key === "REJECTED") return "danger";
+  return "warning";
+};
 
 function IssuedList() {
   const [records, setRecords] = useState([]);
-  const [filters, setFilters] = useState({ status: "", type: "" });
+  const [filters, setFilters] = useState({ status: "", recipientType: "", from: "", to: "" });
   const [revokeId, setRevokeId] = useState(null);
   const navigate = useNavigate();
 
   const load = async () => {
-    const data = await issuerService.getIssuedRecords(filters);
+    const data = await issuerService.listIssuedCredentials(filters);
     setRecords(data);
   };
 
@@ -26,73 +35,109 @@ function IssuedList() {
 
   const columns = [
     { key: "recordId", header: "Record ID" },
-    { key: "candidateId", header: "Candidate ID" },
-    { key: "type", header: "Type" },
-    { key: "level", header: "Level" },
-    { key: "issuedAt", header: "Issued", render: (r) => formatDate(r.issuedAt) },
-    { key: "status", header: "Status", render: (r) => <Badge variant={r.status === "active" ? "success" : r.status === "revoked" ? "danger" : "warning"}>{r.status}</Badge> },
+    { key: "type", header: "Credential type" },
+    {
+      key: "recipientType",
+      header: "Recipient type",
+      render: (r) => (r.recipientType === "CCCD_HASH" ? "CCCD hash ref" : "Candidate ID"),
+    },
+    {
+      key: "recipientValue",
+      header: "Recipient",
+      render: (r) =>
+        r.recipientType === "CCCD_HASH"
+          ? r.cccdHashRef || "hash_ref"
+          : maskAddress(r.ownerCandidateId || r.candidateId),
+    },
+    { key: "issuedAt", header: "Issued at", render: (r) => formatDate(r.issuedAt) },
+    {
+      key: "status",
+      header: "Status",
+      render: (r) => <Badge variant={statusVariant(r.status)}>{(r.status || "").toUpperCase()}</Badge>,
+    },
     {
       key: "actions",
       header: "",
-      render: (r) => (
-        <div className="flex items-center gap-2 justify-end">
-          <Button size="sm" variant="secondary" onClick={() => navigate(`/issuer/issued/${r.recordId}`)}>View</Button>
-          {r.status === "active" && (
-            <Button size="sm" variant="destructive" onClick={() => setRevokeId(r.recordId)}>Revoke</Button>
-          )}
-        </div>
-      ),
+      render: (r) =>
+        r.status !== "REVOKED" ? (
+          <div className="flex justify-end">
+            <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); setRevokeId(r.recordId); }}>
+              Revoke
+            </Button>
+          </div>
+        ) : null,
     },
   ];
 
   const handleRevoke = async () => {
     if (!revokeId) return;
-    await issuerService.revokeRecord(revokeId);
-    toast.success("Revoked");
+    await issuerService.revokeCredential(revokeId);
+    toast.success("Record revoked");
     setRevokeId(null);
     load();
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-xs font-semibold text-slate-500">Issued</p>
-          <h1 className="text-2xl font-bold text-slate-900">Certificates</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Registry entries</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           <Select
             value={filters.status}
             onChange={(e) => setFilters({ ...filters, status: e.target.value })}
           >
             <option value="">All statuses</option>
-            <option value="active">Active</option>
-            <option value="revoked">Revoked</option>
-            <option value="expired">Expired</option>
+            <option value="ISSUED">Issued</option>
+            <option value="VERIFIED">Verified</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="REVOKED">Revoked</option>
           </Select>
           <Select
-            value={filters.type}
-            onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+            value={filters.recipientType}
+            onChange={(e) => setFilters({ ...filters, recipientType: e.target.value })}
           >
-            <option value="">All types</option>
-            <option value="Employment Verification">Employment Verification</option>
-            <option value="Education Check">Education Check</option>
-            <option value="Compliance">Compliance</option>
+            <option value="">All recipients</option>
+            <option value="CANDIDATE_ID">Candidate ID</option>
+            <option value="CCCD_HASH">CCCD hash ref</option>
           </Select>
+          <Input
+            type="date"
+            value={filters.from}
+            onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+            label="From"
+          />
+          <Input
+            type="date"
+            value={filters.to}
+            onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+            label="To"
+          />
         </div>
       </div>
 
-      <Table columns={columns} data={records} emptyLabel="No issued records" />
+      <Table
+        columns={columns}
+        data={records}
+        emptyLabel="No issued records"
+        onRowClick={(row) => navigate(`/issuer/issued/${row.recordId}`)}
+      />
 
       <Modal
         open={Boolean(revokeId)}
         onClose={() => setRevokeId(null)}
         title="Revoke record"
-        description="Confirm revocation. This action marks the record as revoked."
+        description="Confirm revocation. This action marks the record as revoked and logs a verification event."
         footer={
           <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setRevokeId(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleRevoke}>Revoke</Button>
+            <Button variant="ghost" onClick={() => setRevokeId(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleRevoke}>
+              Revoke
+            </Button>
           </div>
         }
       >

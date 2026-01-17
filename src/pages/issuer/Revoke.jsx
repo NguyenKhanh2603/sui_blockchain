@@ -18,8 +18,8 @@ function RevokeCenter() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await issuerService.revokeRecord(form.recordId, form.reason);
-    toast.success("Record revoked");
+    await issuerService.revokeCredential(form.recordId, form.reason);
+    toast.success("Record revoked and logged");
     const refreshed = await issuerService.getRevocationHistory();
     setHistory(refreshed);
   };

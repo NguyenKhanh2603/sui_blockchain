@@ -1,23 +1,45 @@
 import { credentials } from "../mocks/credentials";
 import { issuanceRequests } from "../mocks/requests";
 import { issuerProfile, issuerTeam } from "../mocks/issuers";
-import { auditLogs } from "../mocks/auditLogs";
+import { auditLogs as auditLogMocks } from "../mocks/auditLogs";
 import { verificationEvents as baseVerificationEvents } from "../mocks/verificationEvents";
 
 const delay = (data, ms = 600) =>
   new Promise((resolve) => setTimeout(() => resolve(data), ms));
 
+let profileState = { ...issuerProfile };
 let requestsState = [...issuanceRequests];
-let issuedRecords = credentials.filter((c) => c.category === "verified");
+let issuedRecords = [...credentials];
 let verificationEvents = [...baseVerificationEvents];
 let complianceFiles = [
   { id: "file-1", name: "KYB-Atlas.pdf", status: "approved", uploadedAt: "2024-12-05" },
-  { id: "file-2", name: "SOC2-summary.pdf", status: "pending", uploadedAt: "2024-12-08" },
+  { id: "file-2", name: "SOC2-summary.pdf", status: "under_review", uploadedAt: "2024-12-08" },
 ];
 let revocationHistory = [
-  { recordId: "REC-3102", reason: "Data correction", timestamp: "2024-12-02", performedBy: "Jenny Pham" },
+  { recordId: "REC-3102", reason: "Data correction", timestamp: "2024-12-02T10:00:00Z", performedBy: "Jenny Pham" },
 ];
-let profileState = { ...issuerProfile };
+
+const randomId = (prefix = "REC") => `${prefix}-${Math.floor(Math.random() * 9000 + 1000)}`;
+
+const addEvent = ({ credentialId, action, method, result }) => {
+  const event = {
+    id: randomId("EV"),
+    credentialId,
+    action,
+    method,
+    result,
+    timestamp: new Date().toISOString(),
+  };
+  verificationEvents = [event, ...verificationEvents];
+  return event;
+};
+
+const maskCccd = (value = "") => {
+  const safe = `${value}`.trim();
+  const tail = safe.slice(-4);
+  const maskedPrefix = "*".repeat(Math.max(safe.length - 4, 4));
+  return `${maskedPrefix}${tail}`;
+};
 
 export const issuerService = {
   async getIssuerProfile() {
@@ -27,11 +49,11 @@ export const issuerService = {
     return delay(profileState);
   },
   async getOverview() {
-    const pending = requestsState.filter((r) => r.status === "pending").length;
-    const issued = issuedRecords.length;
-    const active = issuedRecords.filter((r) => r.status === "active").length;
+    const issued = issuedRecords.filter((r) => r.status !== "revoked").length;
+    const active = issuedRecords.filter((r) => r.status === "issued" || r.status === "verified").length;
     const revoked = issuedRecords.filter((r) => r.status === "revoked").length;
-    const activity = auditLogs.slice(0, 5);
+    const pending = requestsState.filter((r) => r.status === "pending").length;
+    const activity = auditLogMocks.slice(0, 5);
     return delay({ pending, issued, active, revoked, activity });
   },
   async getRequests() {
@@ -42,20 +64,24 @@ export const issuerService = {
     if (target) {
       target.status = "approved";
       const newRecord = {
-        recordId: `VR-${Math.floor(Math.random() * 9000 + 1000)}`,
+        recordId: randomId("REC"),
         candidateId: target.candidateId,
-        issuerId: issuerProfile.id,
-        issuerName: issuerProfile.orgName,
+        issuerId: profileState.id,
+        issuerName: profileState.orgName,
         type: target.type,
         level: target.level,
         issuedAt: new Date().toISOString(),
-        status: "active",
+        status: "issued",
         visibility: "public",
         category: "verified",
         sensitive: false,
         proofUrl: "https://example.com/verification",
+        recipientType: "CANDIDATE_ID",
+        ownerCandidateId: target.candidateId,
+        dataHash: `hash_${Date.now()}`,
       };
       issuedRecords = [newRecord, ...issuedRecords];
+      addEvent({ credentialId: newRecord.recordId, action: "ISSUED", method: "Portal", result: "success" });
       return delay(newRecord);
     }
     return delay(null);
@@ -68,51 +94,121 @@ export const issuerService = {
     }
     return delay(target);
   },
-  async issueCertificate(payload) {
-    const newRecordId = `REC-${Math.floor(Math.random() * 9000 + 1000)}`;
-    const recipientType = payload.recipientType || "CANDIDATE";
-    const newEvent = {
-      id: `EV-${Math.floor(Math.random() * 9000 + 1000)}`,
-      credentialId: newRecordId,
-      action: "ISSUE",
-      method: "SYSTEM",
-      result: "success",
-      timestamp: new Date().toISOString(),
+  async startDnsSetup(domain) {
+    profileState = { ...profileState, domain, dnsToken: `token_${Math.floor(Math.random() * 99999)}` };
+    const host = `_verify.${domain}`;
+    const value = `verify=${profileState.dnsToken}`;
+    return delay({ domain, host, value });
+  },
+  async startDomainVerification(domain) {
+    return this.startDnsSetup(domain);
+  },
+  async checkDns(domain) {
+    if (profileState.issuerType !== "CO-OP") {
+      return delay(profileState);
+    }
+    const matchedDomain = profileState.domain && profileState.domain === domain;
+    if (!matchedDomain) {
+      return delay({ ...profileState, dnsError: "Domain mismatch. Update domain and try again." });
+    }
+    const proof = {
+      recordId: randomId("DNS"),
+      domainHash: `hash_${domain}`,
     };
+    profileState = {
+      ...profileState,
+      verificationLevel: Math.max(profileState.verificationLevel || 0, 1),
+      dnsProof: proof,
+      status: profileState.status || "ACTIVE",
+    };
+    return delay(profileState);
+  },
+  async checkDomainVerification(domain) {
+    return this.checkDns(domain);
+  },
+  async submitLegalDocs() {
+    profileState = { ...profileState, legalStatus: "under_review" };
+    return delay(profileState);
+  },
+  async approveLegalDemo() {
+    const proof = {
+      recordId: randomId("LEGAL"),
+      legalDocHash: `hash_legal_${Date.now()}`,
+    };
+    profileState = {
+      ...profileState,
+      verificationLevel: 2,
+      legalStatus: "approved",
+      legalProof: proof,
+      status: "ACTIVE",
+    };
+    addEvent({ credentialId: "-", action: "LEGAL_REVIEW", method: "Portal", result: "approved" });
+    return delay(profileState);
+  },
+  async submitLegalDocsWithFiles() {
+    return this.submitLegalDocs();
+  },
+  async issueCredential(payload) {
+    const recipientType = payload.recipientType || "CANDIDATE_ID";
+    const recordId = randomId("REC");
+    const cccdHashRef = payload.cccdHashRef || (recipientType === "CCCD_HASH" ? `hash_${recordId}` : null);
+    const cccdMasked = recipientType === "CCCD_HASH" ? payload.cccdMasked || maskCccd(payload.cccd || "0000") : null;
+    const statusForIssuer =
+      profileState.issuerType === "NON-CO-OP" ? "verified" : "issued";
     const newRecord = {
-      recordId: newRecordId,
+      recordId,
       issuerId: profileState.id,
       issuerName: profileState.orgName,
-      status: "issued",
+      status: statusForIssuer,
       visibility: "public",
       category: "verified",
       sensitive: false,
       proofUrl: "https://example.com/verification",
       issuedAt: new Date().toISOString(),
       recipientType,
-      ownerCandidateId: recipientType === "CANDIDATE" ? payload.ownerCandidateId : null,
-      cccdHash: recipientType === "IDENTITY_REF" ? payload.cccdHash : null,
-      dataHash: payload.dataHash || `hash_${newRecordId}`,
-      ...payload,
+      ownerCandidateId: recipientType === "CANDIDATE_ID" ? payload.ownerCandidateId || payload.candidateId : null,
+      cccdHashRef,
+      cccdMasked,
+      dataHash: payload.dataHash || `hash_${recordId}`,
+      type: payload.type,
+      level: payload.level,
+      expiresAt: payload.expiresAt || null,
+      internalRef: payload.internalRef || "",
     };
     issuedRecords = [newRecord, ...issuedRecords];
-    verificationEvents = [newEvent, ...verificationEvents];
+    const method = recipientType === "CCCD_HASH" ? "Identity reference" : "Platform user";
+    addEvent({
+      credentialId: recordId,
+      action: profileState.issuerType === "NON-CO-OP" ? "EXTERNAL_VERIFY" : "ISSUED",
+      method,
+      result: statusForIssuer.toUpperCase(),
+    });
     return delay(newRecord);
   },
-  async getIssuedRecords(filters = {}) {
-    const { status, type, recipientType } = filters;
+  async issueCertificate(payload) {
+    return this.issueCredential(payload);
+  },
+  async listIssuedCredentials(filters = {}) {
+    const { status, recipientType, from, to } = filters;
     let list = [...issuedRecords];
-    if (status) list = list.filter((r) => r.status === status);
-    if (type) list = list.filter((r) => r.type === type);
+    if (status) list = list.filter((r) => r.status.toUpperCase() === status.toUpperCase());
     if (recipientType) list = list.filter((r) => r.recipientType === recipientType);
+    if (from) list = list.filter((r) => new Date(r.issuedAt) >= new Date(from));
+    if (to) list = list.filter((r) => new Date(r.issuedAt) <= new Date(to));
     return delay(list);
   },
+  async getIssuedRecords(filters = {}) {
+    return this.listIssuedCredentials(filters);
+  },
   async getIssuedRecord(recordId) {
+    return this.getCredentialDetail(recordId);
+  },
+  async getCredentialDetail(recordId) {
     const record = issuedRecords.find((r) => r.recordId === recordId);
     const events = verificationEvents.filter((e) => e.credentialId === recordId);
     return delay({ ...record, events });
   },
-  async revokeRecord(recordId, reason = "Other") {
+  async revokeCredential(recordId, reason = "Other") {
     issuedRecords = issuedRecords.map((r) =>
       r.recordId === recordId ? { ...r, status: "revoked" } : r
     );
@@ -120,18 +216,11 @@ export const issuerService = {
       { recordId, reason, timestamp: new Date().toISOString(), performedBy: "System" },
       ...revocationHistory,
     ];
-    verificationEvents = [
-      {
-        id: `EV-${Math.floor(Math.random() * 9000 + 1000)}`,
-        credentialId: recordId,
-        action: "REVOKE",
-        method: "SYSTEM",
-        result: reason,
-        timestamp: new Date().toISOString(),
-      },
-      ...verificationEvents,
-    ];
+    addEvent({ credentialId: recordId, action: "REVOKED", method: "Portal", result: reason });
     return delay(true);
+  },
+  async revokeRecord(recordId, reason = "Other") {
+    return this.revokeCredential(recordId, reason);
   },
   async getRevocationHistory() {
     return delay(revocationHistory);
@@ -141,9 +230,9 @@ export const issuerService = {
   },
   async uploadComplianceFile(fileName) {
     const next = {
-      id: `file-${Math.floor(Math.random() * 9000 + 1000)}`,
+      id: randomId("FILE"),
       name: fileName,
-      status: "pending",
+      status: "under_review",
       uploadedAt: new Date().toISOString(),
     };
     complianceFiles = [next, ...complianceFiles];
@@ -152,51 +241,24 @@ export const issuerService = {
   async getTeam() {
     return delay(issuerTeam);
   },
-  async getAuditLogs() {
-    return delay(auditLogs);
-  },
-  async startDomainVerification(domain) {
-    profileState = { ...profileState, domain };
-    const token = `_verify.${domain}`;
-    const host = `_verifyme.${domain}`;
-    return delay({ domain, host, token });
-  },
-  async checkDomainVerification(domain) {
-    const proof = {
-      recordId: `DNS-${Math.floor(Math.random() * 9000 + 1000)}`,
-      domainHash: `hash_${domain}`,
-    };
-    profileState = {
-      ...profileState,
-      verification_level: Math.max(profileState.verification_level, 1),
-      dns_proof: proof,
-    };
-    return delay(profileState);
-  },
-  async submitLegalDocs() {
-    profileState = { ...profileState, legalStatus: "under_review" };
-    return delay(profileState);
-  },
-  async approveLegalVerificationDemo() {
-    const proof = {
-      recordId: `LEGAL-${Math.floor(Math.random() * 9000 + 1000)}`,
-      legalDocHash: `hash_legal_${Date.now()}`,
-    };
-    profileState = {
-      ...profileState,
-      verification_level: 2,
-      legalStatus: "approved",
-      legal_proof: proof,
-    };
-    return delay(profileState);
-  },
-  async listIssuedCredentials(filters = {}) {
-    return this.getIssuedRecords(filters);
-  },
-  async getCredentialDetail(recordId) {
-    return this.getIssuedRecord(recordId);
-  },
-  async revokeCredential(recordId, reason = "Other") {
-    return this.revokeRecord(recordId, reason);
+  async getAuditLogs(filters = {}) {
+    const { action = "", method = "", result = "" } = filters;
+    const logs = [...auditLogMocks, ...verificationEvents.map((e) => ({
+      id: e.id,
+      time: e.timestamp,
+      actor: "System",
+      action: e.action,
+      method: e.method,
+      result: e.result,
+      targetId: e.credentialId,
+    }))];
+    return delay(
+      logs.filter(
+        (l) =>
+          (action ? l.action === action : true) &&
+          (method ? (l.method || "").toLowerCase().includes(method.toLowerCase()) : true) &&
+          (result ? (l.result || "").toLowerCase().includes(result.toLowerCase()) : true)
+      )
+    );
   },
 };

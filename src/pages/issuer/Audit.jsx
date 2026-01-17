@@ -9,7 +9,7 @@ import { formatDate } from "../../utils/formatters";
 
 function Audit() {
   const [logs, setLogs] = useState([]);
-  const [filters, setFilters] = useState({ action: "", actor: "" });
+  const [filters, setFilters] = useState({ action: "", method: "", result: "" });
 
   useEffect(() => {
     issuerService.getAuditLogs().then(setLogs);
@@ -18,16 +18,15 @@ function Audit() {
   const filtered = useMemo(() => {
     return logs.filter((log) => {
       const matchesAction = filters.action ? log.action === filters.action : true;
-      const matchesActor = filters.actor
-        ? log.actor.toLowerCase().includes(filters.actor.toLowerCase())
-        : true;
-      return matchesAction && matchesActor;
+      const matchesMethod = filters.method ? (log.method || "").toLowerCase().includes(filters.method.toLowerCase()) : true;
+      const matchesResult = filters.result ? (log.result || "").toLowerCase().includes(filters.result.toLowerCase()) : true;
+      return matchesAction && matchesMethod && matchesResult;
     });
   }, [logs, filters]);
 
   const exportCsv = () => {
-    const header = ["time", "actor", "action", "targetId"];
-    const rows = filtered.map((l) => [l.time, l.actor, l.action, l.targetId]);
+    const header = ["time", "action", "method", "result", "targetId"];
+    const rows = filtered.map((l) => [l.time, l.action, l.method, l.result, l.targetId]);
     const csv = [header, ...rows].map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -43,35 +42,39 @@ function Audit() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold text-slate-500">Audit</p>
-          <h1 className="text-2xl font-bold text-slate-900">Logs & Export</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Verification history</h1>
         </div>
         <Button onClick={exportCsv}>Export CSV</Button>
       </div>
 
       <Card className="p-4 flex flex-wrap gap-3">
-        <Select
-          value={filters.action}
-          onChange={(e) => setFilters({ ...filters, action: e.target.value })}
-        >
+        <Select value={filters.action} onChange={(e) => setFilters({ ...filters, action: e.target.value })}>
           <option value="">All actions</option>
-          <option>Approved request</option>
-          <option>Issued certificate</option>
-          <option>Access granted</option>
-          <option>Exported CSV</option>
+          <option value="ISSUED">ISSUED</option>
+          <option value="EXTERNAL_VERIFY">EXTERNAL_VERIFY</option>
+          <option value="REVOKED">REVOKED</option>
+          <option value="LEGAL_REVIEW">LEGAL_REVIEW</option>
+          <option value="DNS_CHECK">DNS_CHECK</option>
         </Select>
         <Input
-          placeholder="Filter by actor"
-          value={filters.actor}
-          onChange={(e) => setFilters({ ...filters, actor: e.target.value })}
+          placeholder="Filter by method"
+          value={filters.method}
+          onChange={(e) => setFilters({ ...filters, method: e.target.value })}
+        />
+        <Input
+          placeholder="Filter by result"
+          value={filters.result}
+          onChange={(e) => setFilters({ ...filters, result: e.target.value })}
         />
       </Card>
 
       <Table
         columns={[
           { key: "time", header: "Time", render: (r) => formatDate(r.time) },
-          { key: "actor", header: "Actor" },
           { key: "action", header: "Action" },
-          { key: "targetId", header: "Target record" },
+          { key: "method", header: "Method" },
+          { key: "result", header: "Result" },
+          { key: "targetId", header: "Record ID" },
         ]}
         data={filtered}
         emptyLabel="No logs"

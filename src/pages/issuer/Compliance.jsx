@@ -9,9 +9,11 @@ import toast from "react-hot-toast";
 
 function Compliance() {
   const [files, setFiles] = useState([]);
+  const [profile, setProfile] = useState(null);
 
   useEffect(() => {
     issuerService.getComplianceFiles().then(setFiles);
+    issuerService.getIssuerProfile().then(setProfile);
   }, []);
 
   const handleUpload = async (list) => {
@@ -29,11 +31,28 @@ function Compliance() {
         <h1 className="text-2xl font-bold text-slate-900">Documents</h1>
       </div>
       <Dropzone onFiles={handleUpload} />
+      <Card className="p-4 space-y-1">
+        <p className="text-sm font-semibold text-slate-700">Legal verification status</p>
+        <p className="text-sm text-slate-700">
+          Status: <Badge variant={profile?.legalStatus === "approved" ? "success" : "warning"}>{profile?.legalStatus || "pending"}</Badge>
+        </p>
+        {profile?.legalProof && (
+          <p className="text-xs text-slate-600">
+            Legal proof Record ID: {profile.legalProof.recordId} · Hash reference: {profile.legalProof.legalDocHash}
+          </p>
+        )}
+      </Card>
       <Card className="p-4">
         <Table
           columns={[
             { key: "name", header: "File" },
-            { key: "status", header: "Status", render: (r) => <Badge variant={r.status === "approved" ? "success" : r.status === "pending" ? "warning" : "danger"}>{r.status}</Badge> },
+            {
+              key: "status",
+              header: "Status",
+              render: (r) => (
+                <Badge variant={r.status === "approved" ? "success" : "warning"}>{r.status}</Badge>
+              ),
+            },
             { key: "uploadedAt", header: "Uploaded", render: (r) => formatDate(r.uploadedAt) },
           ]}
           data={files}

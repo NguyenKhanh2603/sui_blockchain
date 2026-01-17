@@ -45,26 +45,55 @@ const redirectMap = {
 function Landing() {
     const [tab, setTab] = useState("login");
     const [role, setRole] = useState("candidate");
-    const [form, setForm] = useState({ username: "", email: "", dob: "", password: "" });
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState({});
-  const navigate = useNavigate();
-  const { login } = useAuth();
+    const [form, setForm] = useState({ username: "", email: "", dob: "", password: "", cccd: "" });
+    const [loading, setLoading] = useState(false);
+    const [errors, setErrors] = useState({});
+    const navigate = useNavigate();
+    const { login } = useAuth();
 
-  const handleSubmit = async (e) => {
+    const maskCccd = (value) => {
+        const sanitized = (value || "").trim();
+        if (!sanitized) return "";
+        const tail = sanitized.slice(-4);
+        const maskedPrefix = "*".repeat(Math.max(sanitized.length - 4, 4));
+        return `${maskedPrefix}${tail}`;
+    };
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        const nextErrors = {};
         if (tab === "login") {
-            const nextErrors = {};
+            if (!form.email?.trim()) nextErrors.email = "Email is required";
+            if (!form.password) nextErrors.password = "Password is required";
+        } else {
             if (!form.username?.trim()) nextErrors.username = "Username is required";
+            if (!form.email?.trim()) nextErrors.email = "Email is required";
             if (!form.dob) nextErrors.dob = "Date of birth is required";
-            setErrors(nextErrors);
-            if (Object.keys(nextErrors).length) return;
+            if (!form.cccd?.trim()) nextErrors.cccd = "National ID (CCCD) is required";
+            if (!form.password) nextErrors.password = "Password is required";
         }
+        setErrors(nextErrors);
+        if (Object.keys(nextErrors).length) return;
+
         setLoading(true);
         try {
-            const name = form.username?.trim() || form.email?.split("@")[0] || "Guest";
-            await login(role, { name, email: form.email, dob: form.dob });
-            toast.success("Signed in");
+            if (tab === "login") {
+                const derivedName = form.email?.split("@")[0] || "Guest";
+                await login(role, { name: derivedName, email: form.email.trim() });
+                toast.success("Signed in");
+            } else {
+                const cccdMasked = maskCccd(form.cccd);
+                const cccdHashRef = `hash_ref_${(form.cccd || "").slice(-4)}_${Date.now()}`;
+                await login(role, {
+                    name: form.username.trim(),
+                    email: form.email.trim(),
+                    dob: form.dob,
+                    cccdMasked,
+                    cccdHashRef,
+                });
+                toast.success("Account created");
+            }
+            setForm({ username: "", email: "", dob: "", password: "", cccd: "" });
             navigate(redirectMap[role]);
         } catch (err) {
             toast.error("Sign-in failed");
@@ -189,19 +218,21 @@ function Landing() {
                             </div>
 
                             <form className="space-y-4" onSubmit={handleSubmit}>
-                                <Input
-                                    label="Username"
-                                    required
-                                    value={form.username}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            username: e.target.value,
-                                        })
-                                    }
-                                    placeholder="Enter your username"
-                                    error={tab === "login" ? errors.username : ""}
-                                />
+                                {tab === "signup" && (
+                                    <Input
+                                        label="Username"
+                                        required
+                                        value={form.username}
+                                        onChange={(e) =>
+                                            setForm({
+                                                ...form,
+                                                username: e.target.value,
+                                            })
+                                        }
+                                        placeholder="Enter your username"
+                                        error={errors.username}
+                                    />
+                                )}
                                 <Input
                                     label="Email"
                                     type="email"
@@ -214,20 +245,38 @@ function Landing() {
                                         })
                                     }
                                     placeholder="Enter your email"
+                                    error={errors.email}
                                 />
-                                <Input
-                                    label="DOB"
-                                    type="date"
-                                    required
-                                    value={form.dob}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            dob: e.target.value,
-                                        })
-                                    }
-                                    error={tab === "login" ? errors.dob : ""}
-                                />
+                                {tab === "signup" && (
+                                    <Input
+                                        label="DOB"
+                                        type="date"
+                                        required
+                                        value={form.dob}
+                                        onChange={(e) =>
+                                            setForm({
+                                                ...form,
+                                                dob: e.target.value,
+                                            })
+                                        }
+                                        error={errors.dob}
+                                    />
+                                )}
+                                {tab === "signup" && (
+                                    <Input
+                                        label="National ID (CCCD)"
+                                        required
+                                        value={form.cccd}
+                                        onChange={(e) =>
+                                            setForm({
+                                                ...form,
+                                                cccd: e.target.value,
+                                            })
+                                        }
+                                        placeholder="Enter your CCCD number"
+                                        error={errors.cccd}
+                                    />
+                                )}
                                 <Input
                                     label="Password"
                                     type="password"
@@ -240,6 +289,7 @@ function Landing() {
                                         })
                                     }
                                     placeholder="Enter your password"
+                                    error={errors.password}
                                 />
                                 {role === "candidate" && (
                                     <div className="flex flex-col gap-2">
