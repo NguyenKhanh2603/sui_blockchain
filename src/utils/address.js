@@ -1,15 +1,26 @@
-export const normalizeAddress = (v) => (v || "").trim().toLowerCase();
+export const normalizeAddress = (v = "") => (v || "").trim().toLowerCase();
 
-export const isValidSuiAddressStrict = (v) =>
-  /^0x[a-f0-9]{64}$/.test(normalizeAddress(v));
+export const normalizeSlushAddress = (input = "") => {
+  const cleaned = normalizeAddress(input).replace(/^0x/, "");
+  if (!cleaned) return "";
+  const padded = cleaned.padStart(64, "0").slice(-64);
+  return `0x${padded}`;
+};
+
+export const isValidSlushAddress = (addr = "") => /^0x[a-f0-9]{64}$/.test(addr || "");
+
+export const isValidSuiAddressStrict = (v) => {
+  const normalized = normalizeSlushAddress(v);
+  return normalized ? isValidSlushAddress(normalized) : false;
+};
 
 export const maskAddress = (v) => {
-  const n = normalizeAddress(v);
-  return isValidSuiAddressStrict(n) ? `${n.slice(0, 6)}...${n.slice(-4)}` : n;
+  const normalized = normalizeSlushAddress(v);
+  return isValidSlushAddress(normalized) ? `${normalized.slice(0, 6)}...${normalized.slice(-4)}` : normalizeAddress(v);
 };
 
 export const formatAddress = (v) => {
-  const n = normalizeAddress(v);
-  if (!isValidSuiAddressStrict(n)) return n;
-  return `${n.slice(0, 6)}...${n.slice(-4)}`;
+  const normalized = normalizeSlushAddress(v);
+  if (!isValidSlushAddress(normalized)) return normalizeAddress(v);
+  return `${normalized.slice(0, 6)}...${normalized.slice(-4)}`;
 };

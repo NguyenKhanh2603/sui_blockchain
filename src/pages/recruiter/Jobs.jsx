@@ -25,7 +25,7 @@ function Jobs() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
-  const [activeId, setActiveId] = useState(null);
+  const [statusUpdating, setStatusUpdating] = useState("");
 
   useEffect(() => {
     loadJobs();
@@ -35,8 +35,6 @@ function Jobs() {
     setLoading(true);
     const list = await recruiterService.listJobs();
     setJobs(list);
-    const active = list.find((j) => j.status === "active");
-    setActiveId(active?.id || null);
     setLoading(false);
   };
 
@@ -77,10 +75,7 @@ function Jobs() {
         minTrust: form.minTrust ? Number(form.minTrust) : 0,
         status: form.status || "draft",
       };
-      const saved = await recruiterService.saveJob(payload);
-      if (payload.status === "active") {
-        await recruiterService.setActiveJob(saved.id);
-      }
+      await recruiterService.saveJob(payload);
       await loadJobs();
       toast.success("Job saved");
       setModalOpen(false);
@@ -91,20 +86,28 @@ function Jobs() {
     }
   };
 
-  const handleSetActive = async (jobId) => {
-    setSaving(true);
+  const handleStatusChange = async (jobId, status) => {
+    const current = jobs.find((j) => j.id === jobId);
+    if (current?.status === status) return;
+    setStatusUpdating(jobId);
     try {
-      await recruiterService.setActiveJob(jobId);
+      await recruiterService.setJobStatus(jobId, status);
       await loadJobs();
-      toast.success("Active job updated");
+      toast.success("Saved");
     } catch (err) {
       toast.error("Unable to update job");
     } finally {
-      setSaving(false);
+      setStatusUpdating("");
     }
   };
-
-  const activeJob = jobs.find((j) => j.id === activeId) || null;
+  const activeJobs = jobs.filter((j) => j.status === "active");
+  const getStatusBadgeVariant = (status) => {
+    if (status === "active") return "success";
+    if (status === "expired") return "danger";
+    if (status === "draft") return "outline";
+    return "default";
+  };
+  const statusLabel = (status = "") => status.charAt(0).toUpperCase() + status.slice(1);
 
   return (
     <div className="space-y-6">
@@ -119,31 +122,45 @@ function Jobs() {
         </Button>
       </div>
 
-      {activeJob && (
+      {activeJobs.length > 0 && (
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-slate-700">Active job</p>
-              <h3 className="text-lg font-bold text-slate-900">{activeJob.title}</h3>
-              <p className="text-xs text-slate-500">Updated {timeAgo(activeJob.updatedAt)}</p>
-              {activeJob.minTrust ? (
-                <p className="mt-1 text-xs font-semibold text-navy-700">
-                  Min trust score {activeJob.minTrust}%
-                </p>
-              ) : null}
-              {activeJob.keywords?.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {activeJob.keywords.map((kw) => (
-                    <span key={kw} className="rounded-full bg-navy-50 text-navy-700 px-2 py-1 text-[11px] font-semibold">
-                      {kw}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <p className="text-sm font-semibold text-slate-700">Active jobs</p>
+              <p className="text-xs text-slate-500">Multiple roles can be live at once.</p>
             </div>
             <Badge variant="success" className="gap-1">
-              <CheckCircle2 className="h-4 w-4" /> Active
+              <CheckCircle2 className="h-4 w-4" /> {activeJobs.length} Active
             </Badge>
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {activeJobs.map((job) => (
+              <div key={job.id} className="rounded-lg border border-slate-100 bg-white p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">{job.title}</h3>
+                    <p className="text-xs text-slate-500">Updated {timeAgo(job.updatedAt)}</p>
+                    {job.minTrust ? (
+                      <p className="mt-1 text-xs font-semibold text-navy-700">
+                        Min trust score {job.minTrust}%
+                      </p>
+                    ) : null}
+                    {job.keywords?.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {job.keywords.map((kw) => (
+                          <span key={kw} className="rounded-full bg-navy-50 text-navy-700 px-2 py-1 text-[11px] font-semibold">
+                            {kw}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <Badge variant="success" className="gap-1">
+                    <CheckCircle2 className="h-4 w-4" /> Active
+                  </Badge>
+                </div>
+              </div>
+            ))}
           </div>
         </Card>
       )}
@@ -172,8 +189,8 @@ function Jobs() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-lg font-bold text-slate-900">{job.title}</h3>
-                      <Badge variant={job.status === "active" ? "success" : "outline"}>
-                        {job.status === "active" ? "Active" : "Draft"}
+                      <Badge variant={getStatusBadgeVariant(job.status)}>
+                        {statusLabel(job.status)}
                       </Badge>
                     </div>
                     <p className="text-xs text-slate-500 mt-1">Updated {timeAgo(job.updatedAt)}</p>
@@ -196,13 +213,26 @@ function Jobs() {
                     <Button size="sm" variant="secondary" className="gap-1" onClick={() => openEdit(job)}>
                       <Edit3 className="h-4 w-4" /> Edit
                     </Button>
-                    {job.status === "active" ? (
-                      <Badge variant="success" className="justify-center">Active</Badge>
-                    ) : (
-                      <Button size="sm" onClick={() => handleSetActive(job.id)} disabled={saving}>
-                        Set active
-                      </Button>
-                    )}
+                    <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 bg-white">
+                      <button
+                        className={`px-3 py-1 text-xs font-semibold transition ${
+                          job.status === "active" ? "bg-navy-600 text-white" : "text-slate-700 hover:bg-slate-50"
+                        }`}
+                        onClick={() => handleStatusChange(job.id, "active")}
+                        disabled={statusUpdating === job.id}
+                      >
+                        Mark as Active
+                      </button>
+                      <button
+                        className={`px-3 py-1 text-xs font-semibold transition ${
+                          job.status === "expired" ? "bg-red-100 text-red-700" : "text-slate-700 hover:bg-slate-50"
+                        }`}
+                        onClick={() => handleStatusChange(job.id, "expired")}
+                        disabled={statusUpdating === job.id}
+                      >
+                        Mark as Expired
+                      </button>
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -254,7 +284,7 @@ function Jobs() {
           />
           <div className="space-y-2">
             <p className="text-sm font-medium text-slate-700">Status</p>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="radio"
@@ -275,8 +305,18 @@ function Jobs() {
                 />
                 Active
               </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="status"
+                  value="expired"
+                  checked={form.status === "expired"}
+                  onChange={() => setForm((prev) => ({ ...prev, status: "expired" }))}
+                />
+                Expired
+              </label>
             </div>
-            <p className="text-xs text-slate-500">Only one job can be active; setting one active will pause others.</p>
+            <p className="text-xs text-slate-500">Multiple jobs can be active; expire a job to pause recommendations.</p>
           </div>
         </form>
       </Modal>

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../store/AuthContext";
 import { recruiterService } from "../services/recruiterService";
-import { isValidSuiAddressStrict, normalizeAddress } from "../utils/address";
+import { isValidSuiAddressStrict, normalizeSlushAddress } from "../utils/address";
 import toast from "react-hot-toast";
 import Badge from "../components/ui/Badge";
 
@@ -39,7 +39,7 @@ function RecruiterLayout() {
   const handleQuickSearch = async (value) => {
     const query = value ?? quickQuery;
     if (!query.trim()) return;
-    const normalized = normalizeAddress(query);
+    const normalized = normalizeSlushAddress(query);
     if (isValidSuiAddressStrict(normalized)) {
       navigate(`/recruiter/candidate/${normalized}`);
       return;

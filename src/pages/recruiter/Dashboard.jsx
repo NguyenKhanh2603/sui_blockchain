@@ -7,7 +7,7 @@ import Badge from "../../components/ui/Badge";
 import Card from "../../components/ui/Card";
 import Skeleton from "../../components/ui/Skeleton";
 import { timeAgo } from "../../utils/formatters";
-import { normalizeAddress, isValidSuiAddressStrict, maskAddress } from "../../utils/address";
+import { isValidSuiAddressStrict, maskAddress, normalizeSlushAddress } from "../../utils/address";
 
 function Dashboard() {
   const [search, setSearch] = useState("");
@@ -34,7 +34,7 @@ function Dashboard() {
   };
 
   const extractCandidateId = (value = "") => {
-    const normalized = normalizeAddress(value);
+    const normalized = normalizeSlushAddress(value);
     return isValidSuiAddressStrict(normalized) ? normalized : null;
   };
 

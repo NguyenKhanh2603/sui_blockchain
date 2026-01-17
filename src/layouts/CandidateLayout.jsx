@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { Shield, FileText, Bell, Settings, Wallet, LogOut } from "lucide-react";
+import { ConnectButton, useCurrentAccount } from "@mysten/dapp-kit";
 import { useAuth } from "../store/AuthContext";
-import { maskAddress, normalizeAddress, isValidSuiAddressStrict } from "../utils/address";
+import { isValidSlushAddress, maskAddress, normalizeSlushAddress } from "../utils/address";
 import { candidateService } from "../services/candidateService";
-import { walletService } from "../services/walletService";
-import toast from "react-hot-toast";
 
 const navItems = [
     {
@@ -31,10 +30,16 @@ const navItems = [
 ];
 
 function CandidateLayout() {
-    const { user, logout, setWalletAddress } = useAuth();
+    const { user, logout } = useAuth();
+    const currentAccount = useCurrentAccount();
     const navigate = useNavigate();
-    const [connectedAddress, setConnectedAddress] = useState(user?.walletAddress || "");
     const [profile, setProfile] = useState(null);
+    const connectedAddress = useMemo(() => {
+      const fromAccount = currentAccount?.address ? normalizeSlushAddress(currentAccount.address) : "";
+      if (isValidSlushAddress(fromAccount)) return fromAccount;
+      const stored = user?.walletAddress ? normalizeSlushAddress(user.walletAddress) : "";
+      return isValidSlushAddress(stored) ? stored : "";
+    }, [currentAccount?.address, user?.walletAddress]);
 
   useEffect(() => {
     let active = true;
@@ -52,22 +57,6 @@ function CandidateLayout() {
     await logout();
     navigate("/");
   };
-
-    const handleConnect = async () => {
-        try {
-            const res = await walletService.connect();
-            const addr = normalizeAddress(res.address);
-            if (!isValidSuiAddressStrict(addr)) {
-                toast.error("Invalid wallet address");
-                return;
-            }
-            setConnectedAddress(addr);
-            setWalletAddress(addr);
-            toast.success("Wallet connected");
-        } catch (err) {
-            toast.error("Wallet not found (install Slush)");
-        }
-    };
 
     return (
         <div className="min-h-screen bg-[#f6f8ff] flex text-slate-900">
@@ -134,12 +123,11 @@ function CandidateLayout() {
                             </p>
                         </div>
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleConnect}
+              <ConnectButton
+                connectText="Connect wallet"
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-navy-200"
-              >
-                Connect wallet
-              </button>
+                variant="outline"
+              />
               <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5">
                 <div className="h-8 w-8 rounded-full bg-gradient-to-br from-navy-500 to-navy-700 text-white flex items-center justify-center font-semibold">
                   {user?.name?.slice(0, 1) || "C"}

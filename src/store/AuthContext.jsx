@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { useCurrentAccount } from "@mysten/dapp-kit";
+import { isValidSlushAddress, normalizeSlushAddress } from "../utils/address";
 
 const AuthContext = createContext();
 
@@ -44,6 +46,7 @@ export function AuthProvider({ children }) {
     const stored = localStorage.getItem("verifyme_user");
     return stored ? JSON.parse(stored) : null;
   });
+  const currentAccount = useCurrentAccount();
 
   useEffect(() => {
     if (user) {
@@ -78,8 +81,19 @@ export function AuthProvider({ children }) {
     });
 
   const setWalletAddress = (address) => {
-    setUser((prev) => (prev ? { ...prev, walletAddress: address } : prev));
+    const normalized = normalizeSlushAddress(address || "");
+    const next = isValidSlushAddress(normalized) ? normalized : "";
+    setUser((prev) => {
+      if (!prev) return prev;
+      if ((prev.walletAddress || "") === next) return prev;
+      return { ...prev, walletAddress: next };
+    });
   };
+
+  useEffect(() => {
+    if (!user) return;
+    setWalletAddress(currentAccount?.address || "");
+  }, [currentAccount?.address, user]);
 
   const logout = () =>
     new Promise((resolve) => {

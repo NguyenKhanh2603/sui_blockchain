@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { ConnectButton } from "@mysten/dapp-kit";
 import { useAuth } from "../../store/AuthContext";
 import { candidateService } from "../../services/candidateService";
 import Card from "../../components/ui/Card";
@@ -7,17 +8,18 @@ import Button from "../../components/ui/Button";
 import Skeleton from "../../components/ui/Skeleton";
 import Modal from "../../components/ui/Modal";
 import { formatDate } from "../../utils/formatters";
-import { maskAddress, normalizeAddress, isValidSuiAddressStrict } from "../../utils/address";
+import { isValidSlushAddress, maskAddress, normalizeSlushAddress } from "../../utils/address";
 import { Lock, Eye, Upload, ShieldCheck, Clock3, PlusCircle } from "lucide-react";
 import CopyButton from "../../components/ui/CopyButton";
 import Input from "../../components/ui/Input";
 import Dropzone from "../../components/ui/Dropzone";
-import { walletService } from "../../services/walletService";
 import toast from "react-hot-toast";
 
 function Vault() {
-  const { user, setWalletAddress } = useAuth();
-  const connectedAddress = user?.walletAddress || "";
+  const { user } = useAuth();
+  const connectedAddress = user?.walletAddress && isValidSlushAddress(user.walletAddress)
+    ? normalizeSlushAddress(user.walletAddress)
+    : "";
   const [credentials, setCredentials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -118,21 +120,6 @@ function Vault() {
     }
   };
 
-  const handleConnect = async () => {
-    try {
-      const res = await walletService.connect();
-      const addr = normalizeAddress(res.address);
-      if (!isValidSuiAddressStrict(addr)) {
-        toast.error("Invalid wallet address");
-        return;
-      }
-      setWalletAddress(addr);
-      toast.success("Wallet connected");
-    } catch (err) {
-      toast.error("Wallet not found (install Slush)");
-    }
-  };
-
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -150,11 +137,11 @@ function Vault() {
           <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setAdding(true)}>
             Import PDF (UI)
           </Button>
-          {!connectedAddress && (
-            <Button variant="secondary" onClick={handleConnect}>
-              Connect wallet
-            </Button>
-          )}
+          <ConnectButton
+            connectText="Connect wallet"
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-navy-200"
+            variant="outline"
+          />
         </div>
       </div>
 

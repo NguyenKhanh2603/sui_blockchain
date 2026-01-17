@@ -1,7 +1,7 @@
 import { candidates } from "../mocks/candidates";
 import { credentials } from "../mocks/credentials";
 import { reviewState } from "../state/reviewState";
-import { isValidSuiAddressStrict, normalizeAddress } from "../utils/address";
+import { isValidSuiAddressStrict, normalizeSlushAddress } from "../utils/address";
 
 const delay = (data, ms = 500) =>
   new Promise((resolve, reject) => {
@@ -33,8 +33,16 @@ let jobsState = [
     title: "Backend Engineer",
     keywords: ["node", "api", "sql"],
     minTrust: 0,
-    status: "draft",
+    status: "expired",
     updatedAt: "2024-12-08T08:00:00Z",
+  },
+  {
+    id: "job-3",
+    title: "Risk Analyst",
+    keywords: ["risk", "data", "sql"],
+    minTrust: 70,
+    status: "draft",
+    updatedAt: "2024-12-06T10:00:00Z",
   },
 ];
 
@@ -49,12 +57,12 @@ export const recruiterService = {
     return delay(list);
   },
   async searchCandidate(query) {
-    const normalized = normalizeAddress(query);
+    const normalized = normalizeSlushAddress(query);
     if (!isValidSuiAddressStrict(normalized)) {
       return delay(new Error("Invalid Candidate ID"));
     }
     const candidate = candidates.find(
-      (c) => normalizeAddress(c.id) === normalized
+      (c) => normalizeSlushAddress(c.id) === normalized
     );
     if (!candidate) {
       return delay(new Error("Candidate not found"));
@@ -62,15 +70,15 @@ export const recruiterService = {
     return delay(candidate);
   },
   async getCandidateCredentials(candidateId) {
-    const normalized = normalizeAddress(candidateId);
+    const normalized = normalizeSlushAddress(candidateId);
     return delay(
-      credentials.filter((c) => normalizeAddress(c.candidateId) === normalized)
+      credentials.filter((c) => normalizeSlushAddress(c.candidateId) === normalized)
     );
   },
   async searchCandidatesByIdOrUsername(query = "") {
-    const normalizedId = normalizeAddress(query);
+    const normalizedId = normalizeSlushAddress(query);
     if (isValidSuiAddressStrict(normalizedId)) {
-      const match = candidates.find((c) => normalizeAddress(c.id) === normalizedId);
+      const match = candidates.find((c) => normalizeSlushAddress(c.id) === normalizedId);
       return delay(match ? [match] : []);
     }
     const tokens = query
@@ -118,20 +126,31 @@ export const recruiterService = {
     return delay([...jobsState]);
   },
   async saveJob(job) {
+    const status = job.status || "draft";
     if (job.id) {
-      jobsState = jobsState.map((j) => (j.id === job.id ? { ...j, ...job, updatedAt: new Date().toISOString() } : j));
+      jobsState = jobsState.map((j) =>
+        j.id === job.id ? { ...j, ...job, status, updatedAt: new Date().toISOString() } : j
+      );
       return delay(jobsState.find((j) => j.id === job.id));
     }
-    const created = { ...job, id: randomId("job"), updatedAt: new Date().toISOString() };
+    const created = { ...job, status, id: randomId("job"), updatedAt: new Date().toISOString() };
     jobsState = [created, ...jobsState];
     return delay(created);
   },
-  async setActiveJob(jobId) {
-    jobsState = jobsState.map((j) => ({ ...j, status: j.id === jobId ? "active" : "draft" }));
+  async setJobStatus(jobId, status) {
+    jobsState = jobsState.map((j) =>
+      j.id === jobId ? { ...j, status, updatedAt: new Date().toISOString() } : j
+    );
     return delay(jobsState.find((j) => j.id === jobId));
+  },
+  async setActiveJob(jobId) {
+    return this.setJobStatus(jobId, "active");
   },
   async getActiveJob() {
     return delay(jobsState.find((j) => j.status === "active") || null);
+  },
+  async getActiveJobs() {
+    return delay(jobsState.filter((j) => j.status === "active"));
   },
   async recommendedCandidatesForJob(job) {
     if (!job) return delay([]);
