@@ -1,0 +1,26 @@
+export const candidates = [
+  {
+    id: "0x91ab23cc98ddee11223344556677889900aabbccddeeff001122334455667788",
+    name: "Linh Tran",
+    bio: "Product designer with a focus on fintech identity and risk UX.",
+    avatarUrl: "https://api.dicebear.com/7.x/initials/svg?seed=Linh%20Tran",
+    trustScore: 92,
+    recentViewedAt: "2024-12-10T10:00:00Z",
+  },
+  {
+    id: "0xa7f9b45de3ffeeddccbbaa99887766554433221100ffeeddccbbaa9988776655",
+    name: "Minh Nguyen",
+    bio: "Full-stack engineer passionate about secure data workflows.",
+    avatarUrl: "https://api.dicebear.com/7.x/initials/svg?seed=Minh%20Nguyen",
+    trustScore: 88,
+    recentViewedAt: "2024-12-09T12:30:00Z",
+  },
+  {
+    id: "0x4cafe19ab2ccddee11223344556677889900aabbccddeeff1122334455667788",
+    name: "An Vo",
+    bio: "Data analyst turning complex datasets into confident decisions.",
+    avatarUrl: "https://api.dicebear.com/7.x/initials/svg?seed=An%20Vo",
+    trustScore: 77,
+    recentViewedAt: "2024-12-08T09:20:00Z",
+  },
+];

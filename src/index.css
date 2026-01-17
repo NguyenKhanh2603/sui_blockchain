@@ -1,0 +1,30 @@
+@import url("https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color: #0f172a;
+    background: #f7f8fb;
+  }
+
+  body {
+    @apply font-sans bg-gradient-to-b from-[#f6f8ff] via-white to-[#f6f8ff] text-slate-900 min-h-screen antialiased;
+  }
+
+  ::selection {
+    @apply bg-navy-100;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/70 backdrop-blur border border-white/40 shadow-soft;
+  }
+
+  .card-grid {
+    @apply grid gap-4 md:gap-6;
+  }
+}
