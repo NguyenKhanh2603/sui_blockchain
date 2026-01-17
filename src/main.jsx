@@ -4,11 +4,12 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
 import { AuthProvider } from "./store/AuthContext";
+import { WalletProvider } from "./store/WalletContext";
 import ToastProvider from "./components/ui/ToastProvider";
 import {
   createNetworkConfig,
   SuiClientProvider,
-  WalletProvider,
+  WalletProvider as DappWalletProvider,
 } from "@mysten/dapp-kit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getFullnodeUrl } from "@mysten/sui/client";
@@ -25,13 +26,15 @@ createRoot(document.getElementById("root")).render(
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <SuiClientProvider networks={networkConfig} defaultNetwork="testnet">
-          <WalletProvider autoConnect slushWallet={{ name: "VerifyMe" }}>
+          <DappWalletProvider autoConnect slushWallet={{ name: "VerifyMe" }}>
             <AuthProvider>
-              <ToastProvider>
-                <App />
-              </ToastProvider>
+              <WalletProvider>
+                <ToastProvider>
+                  <App />
+                </ToastProvider>
+              </WalletProvider>
             </AuthProvider>
-          </WalletProvider>
+          </DappWalletProvider>
         </SuiClientProvider>
       </QueryClientProvider>
     </BrowserRouter>

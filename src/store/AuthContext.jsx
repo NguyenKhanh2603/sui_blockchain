@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { useCurrentAccount } from "@mysten/dapp-kit";
 import { isValidSlushAddress, normalizeSlushAddress } from "../utils/address";
 
 const AuthContext = createContext();
@@ -46,7 +45,6 @@ export function AuthProvider({ children }) {
     const stored = localStorage.getItem("verifyme_user");
     return stored ? JSON.parse(stored) : null;
   });
-  const currentAccount = useCurrentAccount();
 
   useEffect(() => {
     if (user) {
@@ -89,11 +87,6 @@ export function AuthProvider({ children }) {
       return { ...prev, walletAddress: next };
     });
   };
-
-  useEffect(() => {
-    if (!user) return;
-    setWalletAddress(currentAccount?.address || "");
-  }, [currentAccount?.address, user]);
 
   const logout = () =>
     new Promise((resolve) => {

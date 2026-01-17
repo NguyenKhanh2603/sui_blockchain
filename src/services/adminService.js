@@ -34,10 +34,11 @@ export const adminService = {
     }));
     if (!updated) return delay(null);
 
-    let refunds = 0;
+    let refundResult = { refundedCount: 0 };
     if (updated.roleType === "ISSUER") {
       issuerService.applyLegalApproval(updated.proof, "approved");
-      refunds = candidateService.markIssuerVerified(updated.entityId);
+      await issuerService.setIssuerVerified(updated.entityId, true);
+      refundResult = await candidateService.markIssuerVerified(updated.entityId);
     }
     if (updated.roleType === "RECRUITER") {
       recruiterService.applyVerificationApproval(updated.proof?.recordId || randomId("PROOF"));
@@ -49,7 +50,7 @@ export const adminService = {
       result: "approved",
       note: updated.roleType,
     });
-    return delay({ ...updated, refunds });
+    return delay({ ...updated, refunds: refundResult?.refundedCount || 0 });
   },
   async rejectSubmission(submissionId, reason = "Rejected", note = "") {
     const updated = reviewState.updateSubmission(submissionId, (s) => ({

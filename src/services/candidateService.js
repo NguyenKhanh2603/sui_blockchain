@@ -2,13 +2,22 @@ import { candidates as candidateMocks } from "../mocks/candidates";
 import { credentials as credentialMocks } from "../mocks/credentials";
 import { accessRequests } from "../mocks/requests";
 import { normalizeAddress } from "../utils/address";
-import { walletService } from "./walletService";
+import { depositService } from "./depositService";
+import { verificationService } from "./verificationService";
 
 const delay = (data, ms = 500) =>
   new Promise((resolve) => setTimeout(() => resolve(data), ms));
 
 let candidateState = candidateMocks.map((candidate) => ({ ...candidate }));
 let credentialState = credentialMocks.map((credential) => ({ ...credential }));
+
+const legacyDepositStatus = (deposit = {}) => {
+  if (!deposit) return null;
+  if (deposit.status === "refunded") return "REFUNDED";
+  if (deposit.status === "locked") return "PAID";
+  if (deposit.required) return "REQUIRED";
+  return null;
+};
 
 export const candidateService = {
   async getProfile(candidateId) {
@@ -21,14 +30,21 @@ export const candidateService = {
   },
   async getCredentials(candidateId) {
     const normalized = normalizeAddress(candidateId);
+    const ledger = await depositService.list();
     const items = credentialState
       .filter((c) => normalizeAddress(c.candidateId) === normalized)
       .map((item) => {
-        if (item.deposit && item.deposit.status === "locked" && item.issuerVerified) {
-          walletService.refund(item.deposit.amount || 0);
-          return { ...item, deposit: { ...item.deposit, status: "refunded" } };
-        }
-        return item;
+        const ledgerEntry = ledger.find((d) => d.credentialRecordId === item.recordId);
+        const depositStatus = ledgerEntry?.status || item.depositStatus || legacyDepositStatus(item.deposit);
+        const depositAmount =
+          ledgerEntry?.amount ?? item.depositAmount ?? item.deposit?.amount ?? 0;
+        const depositId = ledgerEntry?.id || item.depositId || null;
+        return {
+          ...item,
+          depositStatus,
+          depositAmount,
+          depositId,
+        };
       });
     credentialState = credentialState.map((c) => {
       const found = items.find((i) => i.recordId === c.recordId);
@@ -90,23 +106,61 @@ export const candidateService = {
     });
     return delay(updated);
   },
-  async addExternalCredential({ candidateId, issuerId, issuerName, issuerVerified, certId, walrusFile, walletAddress }) {
-    const needsDeposit = !issuerVerified;
-    const deposit = needsDeposit ? { required: true, amount: 50, status: "locked" } : { required: false, amount: 0, status: "refunded" };
-    if (needsDeposit) {
-      await walletService.deposit(deposit.amount);
-    }
+  async addExternalCredential({
+    candidateId,
+    issuerId,
+    issuerName,
+    issuerVerified,
+    certId,
+    walrusFile,
+    walletAddress,
+    depositStatus = "REQUIRED",
+    depositId = null,
+    depositAmount = 0,
+    idCheckStatus = "NOT_RUN",
+    storageRef = null,
+  }) {
     const recordId = `EXT-${Math.floor(Math.random() * 9000 + 1000)}`;
+    const baseAmount = Number(depositAmount || 0);
+    let ledgerEntry = depositId ? await depositService.getById(depositId) : null;
+
+    if (ledgerEntry && !ledgerEntry.credentialRecordId) {
+      ledgerEntry = await depositService.linkDepositToCredential(ledgerEntry.id, recordId);
+    }
+
+    if (!ledgerEntry && depositStatus) {
+      const created = await depositService.createRequiredDeposit({
+        candidateAddress: walletAddress,
+        issuerId,
+        credentialRecordId: recordId,
+        amount: baseAmount,
+      });
+      ledgerEntry = created;
+      if (depositStatus === "PAID") {
+        ledgerEntry = await depositService.payDeposit({
+          depositId: created.id,
+          candidateAddress: walletAddress,
+          issuerId,
+          credentialRecordId: recordId,
+          amount: baseAmount || created.amount,
+        });
+      }
+    }
+
+    const finalDepositStatus = ledgerEntry?.status || depositStatus || "REQUIRED";
+    const finalDepositAmount = ledgerEntry?.amount ?? baseAmount;
+
     const newCredential = {
       recordId,
       candidateId,
       issuerId,
       issuerName,
       issuerVerified,
+      issuerType: issuerVerified ? "CO" : "NON_CO",
       type: "External credential",
       level: "N/A",
       issuedAt: new Date().toISOString(),
-      status: needsDeposit ? "PENDING" : "ISSUED",
+      status: issuerVerified ? "ISSUED" : "PENDING",
       visibility: "private",
       category: "verified",
       sensitive: false,
@@ -116,31 +170,35 @@ export const candidateService = {
       ownerAddress: walletAddress || null,
       cccdHashRef: walletAddress ? null : `hash_cccd_${recordId}`,
       walrusFiles: walrusFile ? [walrusFile] : [],
+      storageRef: storageRef || walrusFile?.id || null,
       nonCoopCertCheck: { certId, result: issuerVerified ? "success" : "unknown", checkedAt: new Date().toISOString() },
-      deposit,
+      depositStatus: finalDepositStatus,
+      depositAmount: finalDepositAmount,
+      depositId: ledgerEntry?.id || depositId || null,
+      idCheckStatus,
     };
     credentialState = [newCredential, ...credentialState];
     return delay({ ...newCredential });
   },
   async checkCertId(certId) {
-    const res = ["success", "fail", "unknown"][Math.floor(Math.random() * 3)];
-    return delay({ certId, result: res });
+    const res = await verificationService.checkIdOnCert(certId);
+    return delay({ certId, result: res.status });
   },
-  markIssuerVerified(issuerId) {
-    let refunded = 0;
+  async markIssuerVerified(issuerId) {
+    const result = await depositService.refundDepositsByIssuer(issuerId);
+    const ledger = await depositService.list();
     credentialState = credentialState.map((cred) => {
       if (normalizeAddress(cred.issuerId) !== normalizeAddress(issuerId)) return cred;
-      const needsRefund = cred.deposit?.required && cred.deposit.status === "locked";
-      if (needsRefund) {
-        walletService.refund(cred.deposit.amount || 0);
-        refunded += 1;
-      }
+      const entry = ledger.find((d) => d.credentialRecordId === cred.recordId);
+      if (!entry) return { ...cred, issuerVerified: true };
       return {
         ...cred,
         issuerVerified: true,
-        deposit: needsRefund ? { ...cred.deposit, status: "refunded" } : cred.deposit,
+        depositStatus: entry.status,
+        depositAmount: entry.amount ?? cred.depositAmount,
+        depositId: entry.id || cred.depositId,
       };
     });
-    return refunded;
+    return result;
   },
 };

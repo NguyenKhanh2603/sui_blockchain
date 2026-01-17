@@ -1,25 +1,44 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ConnectButton } from "@mysten/dapp-kit";
 import { useAuth } from "../../store/AuthContext";
+import { useWallet } from "../../store/WalletContext";
 import { candidateService } from "../../services/candidateService";
+import { depositService } from "../../services/depositService";
+import { storageService } from "../../services/storageService";
+import { verificationService } from "../../services/verificationService";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Skeleton from "../../components/ui/Skeleton";
 import Modal from "../../components/ui/Modal";
 import { formatDate } from "../../utils/formatters";
-import { isValidSlushAddress, maskAddress, normalizeSlushAddress } from "../../utils/address";
-import { Lock, Eye, Upload, ShieldCheck, Clock3, PlusCircle } from "lucide-react";
+import { maskAddress, shortAddress } from "../../utils/address";
+import { Lock, Eye, Upload, ShieldCheck, Clock3 } from "lucide-react";
 import CopyButton from "../../components/ui/CopyButton";
 import Input from "../../components/ui/Input";
 import Dropzone from "../../components/ui/Dropzone";
 import toast from "react-hot-toast";
+import { ConnectButton } from "@mysten/dapp-kit";
+
+const defaultExternalForm = {
+  issuerId: "0x3103103103103103103103103103103103103103103103103103103103103103",
+  issuerName: "GrowthCert",
+  issuerVerified: false,
+  certId: "",
+  file: null,
+};
 
 function Vault() {
   const { user } = useAuth();
-  const connectedAddress = user?.walletAddress && isValidSlushAddress(user.walletAddress)
-    ? normalizeSlushAddress(user.walletAddress)
-    : "";
+  const {
+    address: walletAddress,
+    connected,
+    connect,
+    balance,
+    adjustBalance,
+    refreshBalance,
+    connecting,
+  } = useWallet();
+  const connectedAddress = connected && walletAddress ? walletAddress : "";
   const [credentials, setCredentials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -27,14 +46,26 @@ function Vault() {
   const [selected, setSelected] = useState(null);
   const [profile, setProfile] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [externalForm, setExternalForm] = useState({
-    issuerId: "issuer-noncoop-01",
-    issuerName: "GrowthCert",
-    issuerVerified: false,
-    certId: "",
-    file: null,
-  });
-  const [checkingCert, setCheckingCert] = useState(false);
+  const [externalForm, setExternalForm] = useState({ ...defaultExternalForm });
+  const [submitting, setSubmitting] = useState(false);
+  const [depositRecord, setDepositRecord] = useState(null);
+  const [depositStatus, setDepositStatus] = useState("REQUIRED");
+  const [idCheckStatus, setIdCheckStatus] = useState("NOT_RUN");
+  const [storageRef, setStorageRef] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [depositPending, setDepositPending] = useState(false);
+  const depositAmount = 5;
+  const isNonCoIssuer = !externalForm.issuerVerified;
+
+  const resetExternalFlow = () => {
+    setExternalForm({ ...defaultExternalForm });
+    setDepositRecord(null);
+    setDepositStatus("REQUIRED");
+    setIdCheckStatus("NOT_RUN");
+    setStorageRef(null);
+    setUploading(false);
+    setDepositPending(false);
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -49,6 +80,12 @@ function Vault() {
     };
     load();
   }, [user.id]);
+
+  useEffect(() => {
+    if (!adding) {
+      resetExternalFlow();
+    }
+  }, [adding]);
 
   const claimable = credentials.filter(
     (cred) =>
@@ -80,43 +117,129 @@ function Vault() {
     }
   };
 
+  const handlePayDeposit = async () => {
+    if (!connectedAddress) {
+      toast.error("Connect wallet to continue");
+      return;
+    }
+    setDepositPending(true);
+    try {
+      const amountToUse = depositRecord?.amount ?? depositAmount;
+      const required = depositRecord?.id
+        ? depositRecord
+        : await depositService.createRequiredDeposit({
+            candidateAddress: connectedAddress,
+            issuerId: externalForm.issuerId,
+            credentialRecordId: null,
+            amount: amountToUse,
+          });
+      await adjustBalance(-amountToUse);
+      const paid = await depositService.payDeposit({
+        depositId: required.id,
+        candidateAddress: connectedAddress,
+        issuerId: externalForm.issuerId,
+        credentialRecordId: required.credentialRecordId,
+        amount: amountToUse,
+      });
+      setDepositRecord(paid);
+      setDepositStatus(paid.status || "PAID");
+      toast.success("Deposit paid");
+      await refreshBalance();
+    } catch (err) {
+      if (err?.message === "insufficient_balance") {
+        toast.error("Insufficient balance");
+      }
+    } finally {
+      setDepositPending(false);
+    }
+  };
+
+  const runIdCheck = async () => {
+    if (!isNonCoIssuer) return;
+    if (!storageRef) {
+      toast.error("Upload credential first");
+      return;
+    }
+    setIdCheckStatus("CHECKING");
+    try {
+      const res = await verificationService.checkIdOnCert(storageRef.id);
+      setIdCheckStatus(res.status);
+      toast.success(res.status === "MATCHED" ? "ID matched on credential" : "ID check did not match");
+    } catch (err) {
+      setIdCheckStatus("NOT_RUN");
+      toast.error("Unable to check ID");
+    }
+  };
+
+  const handleFileUpload = async (files) => {
+    const file = files?.[0] || null;
+    setExternalForm((prev) => ({ ...prev, file }));
+    if (!file) {
+      setStorageRef(null);
+      setIdCheckStatus("NOT_RUN");
+      return;
+    }
+    setUploading(true);
+    try {
+      const uploaded = await storageService.uploadFile(file);
+      setStorageRef(uploaded);
+      if (isNonCoIssuer) {
+        setIdCheckStatus("CHECKING");
+        const res = await verificationService.checkIdOnCert(uploaded.id);
+        setIdCheckStatus(res.status);
+        toast.success(res.status === "MATCHED" ? "ID matched on credential" : "ID check did not match");
+      } else {
+        setIdCheckStatus("NOT_RUN");
+      }
+    } catch (err) {
+      setIdCheckStatus("NOT_RUN");
+      toast.error("Unable to check ID");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleExternalSubmit = async () => {
     if (!connectedAddress) {
       toast.error("Connect wallet to continue");
+      await connect?.();
       return;
     }
     if (!externalForm.certId) {
       toast.error("Certificate ID is required");
       return;
     }
-    setCheckingCert(true);
+    if (isNonCoIssuer && depositStatus !== "PAID") {
+      toast.error("Pay deposit before submitting");
+      return;
+    }
+    setSubmitting(true);
     try {
-      const fileMeta = externalForm.file
-        ? { walrusId: `walrus_${Date.now()}`, fileHash: `hash_${Date.now()}`, fileName: externalForm.file.name }
-        : null;
       const newCred = await candidateService.addExternalCredential({
         candidateId: user.id,
         issuerId: externalForm.issuerId,
         issuerName: externalForm.issuerName,
         issuerVerified: externalForm.issuerVerified,
         certId: externalForm.certId,
-        walrusFile: fileMeta,
+        walrusFile: storageRef || (externalForm.file ? { fileName: externalForm.file.name } : null),
         walletAddress: connectedAddress,
+        depositStatus: isNonCoIssuer ? depositStatus : "REFUNDED",
+        depositId: depositRecord?.id || null,
+        depositAmount: isNonCoIssuer ? depositAmount : 0,
+        idCheckStatus,
+        storageRef: storageRef?.id || null,
       });
+      if (depositRecord?.id && newCred?.recordId) {
+        await depositService.linkDepositToCredential(depositRecord.id, newCred.recordId);
+      }
       setCredentials((prev) => [newCred, ...prev]);
-      toast.success(newCred.deposit?.status === "locked" ? "Deposit locked for review" : "Credential added");
+      toast.success(isNonCoIssuer ? "Deposit locked for review" : "Credential added");
       setAdding(false);
-      setExternalForm({
-        issuerId: "issuer-noncoop-01",
-        issuerName: "GrowthCert",
-        issuerVerified: false,
-        certId: "",
-        file: null,
-      });
+      resetExternalFlow();
     } catch (err) {
       toast.error("Unable to add credential");
     } finally {
-      setCheckingCert(false);
+      setSubmitting(false);
     }
   };
 
@@ -134,13 +257,19 @@ function Vault() {
             disabled={!connectedAddress}
             title={!connectedAddress ? "Connect wallet to copy" : ""}
           />
-          <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setAdding(true)}>
+          <Button
+            variant="secondary"
+            icon={<Upload className="h-4 w-4" />}
+            onClick={() => {
+              resetExternalFlow();
+              setAdding(true);
+            }}
+          >
             Import PDF (UI)
           </Button>
           <ConnectButton
             connectText="Connect wallet"
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-navy-200"
-            variant="outline"
           />
         </div>
       </div>
@@ -302,24 +431,39 @@ function Vault() {
 
       <Modal
         open={adding}
-        onClose={() => setAdding(false)}
+        onClose={() => {
+          setAdding(false);
+          resetExternalFlow();
+        }}
         title="Add external credential"
         description="Upload credential issued by an unverified issuer."
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setAdding(false)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setAdding(false);
+                resetExternalFlow();
+              }}
+            >
               Cancel
             </Button>
-            <Button loading={checkingCert} onClick={handleExternalSubmit}>
-              Submit
+            <Button
+              loading={submitting}
+              onClick={handleExternalSubmit}
+              disabled={uploading || idCheckStatus === "CHECKING" || (isNonCoIssuer && depositStatus !== "PAID")}
+            >
+              Submit for verification
             </Button>
           </div>
         }
       >
         <div className="space-y-3">
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            Issuer {externalForm.issuerName} is not verified. A deposit may be locked until verification completes.
-          </div>
+          {isNonCoIssuer && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              Deposit required to reduce spam and discourage fake submissions.
+            </div>
+          )}
           <Input
             label="Issuer"
             value={externalForm.issuerName}
@@ -329,29 +473,55 @@ function Vault() {
             label="Certificate ID"
             value={externalForm.certId}
             onChange={(e) => setExternalForm({ ...externalForm, certId: e.target.value })}
+            onBlur={(e) => setExternalForm({ ...externalForm, certId: e.target.value.trim() })}
             placeholder="Enter certificate ID"
             required
           />
           <Dropzone
-            onFiles={(files) => setExternalForm({ ...externalForm, file: files?.[0] || null })}
+            onFiles={handleFileUpload}
             helper="Upload credential PDF"
           />
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              variant="secondary"
-              loading={checkingCert}
-              onClick={async () => {
-                setCheckingCert(true);
-                const res = await candidateService.checkCertId(externalForm.certId || "N/A");
-                toast.success(`Check result: ${res.result}`);
-                setCheckingCert(false);
-              }}
-              icon={<PlusCircle className="h-4 w-4" />}
-            >
-              Check ID on cert
-            </Button>
-          </div>
+          {isNonCoIssuer && (
+            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs text-slate-500">Deposit status</p>
+                  <p className="text-sm font-semibold">{depositStatus}</p>
+                  <p className="text-xs text-slate-500">Amount: {depositAmount.toFixed(2)}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <p className="text-xs text-slate-500">
+                    Balance: {balance != null ? balance.toFixed(2) : "--"}
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={handlePayDeposit}
+                    loading={depositPending}
+                    disabled={depositStatus === "PAID"}
+                  >
+                    Pay deposit
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+          {isNonCoIssuer && (
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <div>
+                <p className="text-xs text-slate-500">Check ID on cert</p>
+                <p className="text-sm font-semibold">{idCheckStatus}</p>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={runIdCheck}
+                disabled={idCheckStatus === "CHECKING" || !storageRef}
+              >
+                Re-run
+              </Button>
+            </div>
+          )}
         </div>
       </Modal>
     </div>

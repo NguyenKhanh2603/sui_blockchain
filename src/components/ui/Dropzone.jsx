@@ -2,7 +2,7 @@ import React from "react";
 import clsx from "clsx";
 import { UploadCloud } from "lucide-react";
 
-function Dropzone({ onFiles, className }) {
+function Dropzone({ onFiles, className, helper }) {
   const [isDragging, setIsDragging] = React.useState(false);
 
   const handleDrop = (e) => {
@@ -29,7 +29,7 @@ function Dropzone({ onFiles, className }) {
       <UploadCloud className="h-8 w-8 text-navy-500" />
       <div>
         <p className="font-semibold text-slate-900">Drag & drop compliance files</p>
-        <p className="text-sm text-slate-500">PDFs, CSVs, DOC up to 10MB (UI only)</p>
+        <p className="text-sm text-slate-500">{helper || "PDFs, CSVs, DOC up to 10MB (UI only)"}</p>
       </div>
       <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-navy-700 shadow-sm">
         Browse files

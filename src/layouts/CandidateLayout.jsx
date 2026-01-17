@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { Shield, FileText, Bell, Settings, Wallet, LogOut } from "lucide-react";
-import { ConnectButton, useCurrentAccount } from "@mysten/dapp-kit";
 import { useAuth } from "../store/AuthContext";
-import { isValidSlushAddress, maskAddress, normalizeSlushAddress } from "../utils/address";
+import { shortAddress } from "../utils/address";
 import { candidateService } from "../services/candidateService";
+import { useWallet } from "../store/WalletContext";
+import CopyButton from "../components/ui/CopyButton";
+import Button from "../components/ui/Button";
+import { ConnectButton } from "@mysten/dapp-kit";
 
 const navItems = [
     {
@@ -31,15 +34,10 @@ const navItems = [
 
 function CandidateLayout() {
     const { user, logout } = useAuth();
-    const currentAccount = useCurrentAccount();
+    const { address, connected, balance } = useWallet();
     const navigate = useNavigate();
     const [profile, setProfile] = useState(null);
-    const connectedAddress = useMemo(() => {
-      const fromAccount = currentAccount?.address ? normalizeSlushAddress(currentAccount.address) : "";
-      if (isValidSlushAddress(fromAccount)) return fromAccount;
-      const stored = user?.walletAddress ? normalizeSlushAddress(user.walletAddress) : "";
-      return isValidSlushAddress(stored) ? stored : "";
-    }, [currentAccount?.address, user?.walletAddress]);
+    const connectedAddress = useMemo(() => (connected && address ? address : ""), [connected, address]);
 
   useEffect(() => {
     let active = true;
@@ -76,11 +74,21 @@ function CandidateLayout() {
                     <p className="text-xs font-semibold text-slate-500">
                         Candidate ID
                     </p>
-                    <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                        <Wallet className="h-4 w-4 text-navy-500" />
-                        <span className="text-sm font-semibold">
-                            {connectedAddress ? maskAddress(connectedAddress) : "Not connected"}
+                    <div className="mt-2 space-y-2">
+                      <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 min-w-0">
+                        <Wallet className="h-4 w-4 text-navy-500 shrink-0" />
+                        <span className="text-sm font-semibold truncate" title={connectedAddress}>
+                          {connectedAddress ? shortAddress(connectedAddress) : "Not connected"}
                         </span>
+                      </div>
+                      {connectedAddress ? (
+                        <CopyButton value={connectedAddress} size="md" className="w-full justify-center" />
+                      ) : (
+                        <ConnectButton
+                          connectText="Connect wallet"
+                          className="w-full justify-center rounded-lg bg-navy-600 text-white hover:bg-navy-700"
+                        />
+                      )}
                     </div>
                 </div>
                 <nav className="flex-1 px-3 space-y-1">
@@ -126,8 +134,13 @@ function CandidateLayout() {
               <ConnectButton
                 connectText="Connect wallet"
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-navy-200"
-                variant="outline"
               />
+              <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5">
+                <div className="hidden sm:block">
+                  <p className="text-xs text-slate-500">Balance</p>
+                  <p className="text-sm font-semibold">{balance != null ? balance.toFixed(2) : "--"}</p>
+                </div>
+              </div>
               <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5">
                 <div className="h-8 w-8 rounded-full bg-gradient-to-br from-navy-500 to-navy-700 text-white flex items-center justify-center font-semibold">
                   {user?.name?.slice(0, 1) || "C"}
