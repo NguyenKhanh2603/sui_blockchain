@@ -3,6 +3,7 @@ import { issuanceRequests } from "../mocks/requests";
 import { issuerProfile, issuerTeam } from "../mocks/issuers";
 import { auditLogs as auditLogMocks } from "../mocks/auditLogs";
 import { verificationEvents as baseVerificationEvents } from "../mocks/verificationEvents";
+import { reviewState } from "../state/reviewState";
 
 const delay = (data, ms = 600) =>
   new Promise((resolve) => setTimeout(() => resolve(data), ms));
@@ -20,6 +21,22 @@ let revocationHistory = [
 ];
 
 const randomId = (prefix = "REC") => `${prefix}-${Math.floor(Math.random() * 9000 + 1000)}`;
+const upsertProof = (method, attrs = {}) => {
+  const existing = (profileState.proofs || []).filter((p) => p.method !== method);
+  profileState = {
+    ...profileState,
+    proofs: [
+      ...existing,
+      {
+        method,
+        proofId: attrs.proofId || attrs.recordId || randomId(method === "DNS" ? "DNS" : "LEGAL"),
+        proofHash: attrs.proofHash || attrs.domainHash || attrs.legalDocHash || `hash_${Date.now()}`,
+        status: attrs.status || "PENDING",
+        submittedAt: attrs.submittedAt || new Date().toISOString(),
+      },
+    ],
+  };
+};
 
 const addEvent = ({ credentialId, action, method, result }) => {
   const event = {
@@ -41,9 +58,14 @@ const maskCccd = (value = "") => {
   return `${maskedPrefix}${tail}`;
 };
 
+const legalProofFor = () => ({
+  recordId: randomId("LEGAL"),
+  legalDocHash: `hash_legal_${Date.now()}`,
+});
+
 export const issuerService = {
   async getIssuerProfile() {
-    return delay(profileState);
+    return delay({ ...profileState, proofs: profileState.proofs || [] });
   },
   async getStatus() {
     return delay(profileState);
@@ -95,6 +117,9 @@ export const issuerService = {
     return delay(target);
   },
   async startDnsSetup(domain) {
+    if (profileState.issuerType !== "COOP") {
+      return delay({ error: "DNS verification is only required for co-op issuers." });
+    }
     profileState = { ...profileState, domain, dnsToken: `token_${Math.floor(Math.random() * 99999)}` };
     const host = `_verify.${domain}`;
     const value = `verify=${profileState.dnsToken}`;
@@ -104,8 +129,8 @@ export const issuerService = {
     return this.startDnsSetup(domain);
   },
   async checkDns(domain) {
-    if (profileState.issuerType !== "CO-OP") {
-      return delay(profileState);
+    if (profileState.issuerType !== "COOP") {
+      return delay({ ...profileState, dnsError: "DNS verification is only for co-op issuers." });
     }
     const matchedDomain = profileState.domain && profileState.domain === domain;
     if (!matchedDomain) {
@@ -115,38 +140,104 @@ export const issuerService = {
       recordId: randomId("DNS"),
       domainHash: `hash_${domain}`,
     };
+    upsertProof("DNS", { ...proof, status: "VERIFIED" });
     profileState = {
       ...profileState,
       verificationLevel: Math.max(profileState.verificationLevel || 0, 1),
       dnsProof: proof,
-      status: profileState.status || "ACTIVE",
+      status: "ACTIVE",
+      dnsError: undefined,
     };
     return delay(profileState);
   },
   async checkDomainVerification(domain) {
     return this.checkDns(domain);
   },
-  async submitLegalDocs() {
-    profileState = { ...profileState, legalStatus: "under_review" };
-    return delay(profileState);
+  async submitLegalDocs(files = []) {
+    const submission = {
+      submissionId: randomId("SUB"),
+      entityId: profileState.id,
+      entityName: profileState.orgName,
+      roleType: "ISSUER",
+      status: "PENDING",
+      submittedAt: new Date().toISOString(),
+      email: profileState.supportEmail || "legal@issuer.test",
+      files: files.length ? files : [{ name: "legal-pack.pdf", url: "" }],
+      notes: "Submitted from issuer portal",
+    };
+    reviewState.addSubmission(submission);
+    reviewState.addAuditLog({
+      actor: profileState.orgName,
+      action: "SUBMITTED_LEGAL",
+      targetId: submission.submissionId,
+      result: "pending",
+    });
+    upsertProof("LEGAL", { status: "PENDING" });
+    profileState = { ...profileState, legalStatus: "under_review", lastSubmissionId: submission.submissionId };
+    return delay({ ...profileState });
   },
   async approveLegalDemo() {
-    const proof = {
-      recordId: randomId("LEGAL"),
-      legalDocHash: `hash_legal_${Date.now()}`,
-    };
+    const proof = legalProofFor();
     profileState = {
       ...profileState,
       verificationLevel: 2,
       legalStatus: "approved",
       legalProof: proof,
+      issuerVerified: true,
       status: "ACTIVE",
     };
+    upsertProof("LEGAL", { ...proof, status: "APPROVED" });
+    reviewState.updateSubmission(profileState.lastSubmissionId, (s) => ({
+      ...s,
+      status: "APPROVED",
+      proof,
+    }));
     addEvent({ credentialId: "-", action: "LEGAL_REVIEW", method: "Portal", result: "approved" });
     return delay(profileState);
   },
-  async submitLegalDocsWithFiles() {
-    return this.submitLegalDocs();
+  async submitLegalDocsWithFiles(files = []) {
+    return this.submitLegalDocs(files);
+  },
+  applyLegalApproval(proofOverride, note = "") {
+    const proof = proofOverride || legalProofFor();
+    profileState = {
+      ...profileState,
+      verificationLevel: 2,
+      legalStatus: "approved",
+      legalProof: proof,
+      issuerVerified: true,
+      status: "ACTIVE",
+    };
+    upsertProof("LEGAL", { ...proof, status: "APPROVED" });
+    reviewState.addAuditLog({
+      actor: "Admin",
+      action: "LEGAL_APPROVED",
+      targetId: profileState.id,
+      result: note || "approved",
+    });
+    return { ...profileState };
+  },
+  applyLegalNeedsUpdate(note = "") {
+    profileState = { ...profileState, legalStatus: "needs_update" };
+    upsertProof("LEGAL", { status: "NEEDS_UPDATE" });
+    reviewState.addAuditLog({
+      actor: "Admin",
+      action: "LEGAL_UPDATE_REQUEST",
+      targetId: profileState.id,
+      result: note || "needs_update",
+    });
+    return { ...profileState };
+  },
+  applyLegalRejection(reason = "") {
+    profileState = { ...profileState, legalStatus: "rejected" };
+    upsertProof("LEGAL", { status: "REJECTED" });
+    reviewState.addAuditLog({
+      actor: "Admin",
+      action: "LEGAL_REJECTED",
+      targetId: profileState.id,
+      result: reason || "rejected",
+    });
+    return { ...profileState };
   },
   async issueCredential(payload) {
     const recipientType = payload.recipientType || "CANDIDATE_ID";
@@ -154,7 +245,7 @@ export const issuerService = {
     const cccdHashRef = payload.cccdHashRef || (recipientType === "CCCD_HASH" ? `hash_${recordId}` : null);
     const cccdMasked = recipientType === "CCCD_HASH" ? payload.cccdMasked || maskCccd(payload.cccd || "0000") : null;
     const statusForIssuer =
-      profileState.issuerType === "NON-CO-OP" ? "verified" : "issued";
+      profileState.issuerType === "NON_COOP" ? "verified" : "issued";
     const newRecord = {
       recordId,
       issuerId: profileState.id,
@@ -179,7 +270,7 @@ export const issuerService = {
     const method = recipientType === "CCCD_HASH" ? "Identity reference" : "Platform user";
     addEvent({
       credentialId: recordId,
-      action: profileState.issuerType === "NON-CO-OP" ? "EXTERNAL_VERIFY" : "ISSUED",
+      action: profileState.issuerType === "NON_COOP" ? "EXTERNAL_VERIFY" : "ISSUED",
       method,
       result: statusForIssuer.toUpperCase(),
     });

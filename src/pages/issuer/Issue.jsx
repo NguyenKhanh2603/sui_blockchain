@@ -32,11 +32,15 @@ function IssueCertificate() {
 
   const issueBlocked =
     profile &&
-    ((profile.issuerType === "CO-OP" && (profile.verificationLevel || 0) < 1) ||
-      profile.issuerType === "NON-CO-OP");
+    ((profile.issuerType === "COOP" && (profile.verificationLevel || 0) < 1) ||
+      profile.issuerType === "NON_COOP");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (issueBlocked) {
+      toast.error("Complete verification to issue.");
+      return;
+    }
     setError("");
     if (recipientType === "CANDIDATE_ID") {
       const normalized = normalizeAddress(form.candidateId);
@@ -105,9 +109,9 @@ function IssueCertificate() {
 
       {issueBlocked && (
         <Card className="p-4 border-amber-200 bg-amber-50 text-amber-800">
-          {profile.issuerType === "CO-OP"
-            ? "Complete DNS verification to issue credentials."
-            : "NON-CO-OP issuers require external verification. Issuing is disabled in this view."}
+          {profile.issuerType === "COOP"
+            ? "Complete domain verification to issue credentials."
+            : "Non co-op issuers require external verification. Issuing is disabled in this view."}
           <div className="mt-2">
             <Button size="sm" variant="secondary" onClick={() => navigate("/issuer/verification")}>
               Go to verification

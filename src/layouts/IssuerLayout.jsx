@@ -2,18 +2,15 @@ import React, { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   ShieldCheck,
-  BarChart2,
   Inbox,
   Stamp,
   FileCheck2,
   Ban,
   HeartHandshake,
   FolderUp,
-  Users2,
   ScrollText,
   Settings,
   LogOut,
-  Sparkles,
 } from "lucide-react";
 import { issuerService } from "../services/issuerService";
 import { useAuth } from "../store/AuthContext";
@@ -26,7 +23,6 @@ const navItems = [
   { to: "/issuer/revoke", label: "Revoke", icon: <Ban className="h-5 w-5" />, protected: true },
   { to: "/issuer/trust-page", label: "Trust Page", icon: <HeartHandshake className="h-5 w-5" />, protected: true },
   { to: "/issuer/compliance", label: "Compliance", icon: <FolderUp className="h-5 w-5" />, protected: false },
-  { to: "/issuer/team", label: "Team & Roles", icon: <Users2 className="h-5 w-5" />, protected: true },
   { to: "/issuer/audit", label: "Audit / Logs", icon: <ScrollText className="h-5 w-5" />, protected: true },
   { to: "/issuer/settings", label: "Settings", icon: <Settings className="h-5 w-5" />, protected: false },
 ];
@@ -45,7 +41,9 @@ function IssuerLayout() {
     navigate("/");
   };
 
-  const disabled = status && status.issuerType === "NON-CO-OP";
+  const isCoop = status?.issuerType === "COOP";
+  const isLegallyVerified = (status?.verificationLevel || 0) >= 2;
+  const isVerified = (status?.verificationLevel || 0) >= 1;
 
   return (
     <div className="min-h-screen bg-[#f4f7fb] flex text-slate-900">
@@ -63,14 +61,14 @@ function IssuerLayout() {
           <p className="text-xs font-semibold text-slate-500">Organization</p>
           <p className="font-bold">{status?.orgName || user?.orgName}</p>
           <p className="text-xs text-slate-500">Environment: {status?.environment || "Test"}</p>
+          <p className="text-xs text-slate-600">Type: {status?.issuerType || "Unknown"}</p>
         </div>
         <nav className="flex-1 px-3 space-y-1">
           {navItems.map((item) => {
             const isIssue = item.to === "/issuer/issue";
             const isDisabled =
-              (disabled && item.protected) ||
-              (isIssue && status && status.issuerType === "CO-OP" && (status.verificationLevel || 0) < 1) ||
-              (isIssue && status && status.issuerType === "NON-CO-OP");
+              (isIssue && isCoop && (status?.verificationLevel || 0) < 1) ||
+              (isIssue && status?.issuerType === "NON_COOP");
             return (
               <NavLink
                 key={item.to}
@@ -92,9 +90,6 @@ function IssuerLayout() {
           })}
         </nav>
         <div className="px-4 py-5 border-t border-slate-100 space-y-3">
-          <button className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-navy-700 hover:border-navy-200">
-            <Sparkles className="h-4 w-4" /> Quick Issue
-          </button>
           <button
             onClick={handleLogout}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-navy-200 hover:text-navy-700"
@@ -112,8 +107,8 @@ function IssuerLayout() {
               <p className="text-sm font-semibold">{status?.orgName || user?.orgName}</p>
             </div>
             <div className="flex items-center gap-3">
-              <span className="rounded-full bg-navy-50 px-3 py-1 text-xs font-semibold text-navy-700">
-                {status?.statusVerified ? "Verified" : "Not Authorized"}
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${isLegallyVerified ? "bg-green-100 text-green-700" : isVerified ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-700"}`}>
+                {isLegallyVerified ? "Legally verified" : isVerified ? "Verified" : "Not verified"}
               </span>
               <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5">
                 <div className="h-9 w-9 rounded-full bg-gradient-to-br from-navy-500 to-navy-700 text-white flex items-center justify-center font-semibold">

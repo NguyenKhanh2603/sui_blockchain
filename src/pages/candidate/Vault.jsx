@@ -7,30 +7,52 @@ import Button from "../../components/ui/Button";
 import Skeleton from "../../components/ui/Skeleton";
 import Modal from "../../components/ui/Modal";
 import { formatDate } from "../../utils/formatters";
-import { maskAddress } from "../../utils/address";
-import { useCurrentAccount } from "@mysten/dapp-kit";
-import { Lock, Eye, Upload, ShieldCheck, Clock3 } from "lucide-react";
+import { maskAddress, normalizeAddress, isValidSuiAddressStrict } from "../../utils/address";
+import { Lock, Eye, Upload, ShieldCheck, Clock3, PlusCircle } from "lucide-react";
 import CopyButton from "../../components/ui/CopyButton";
+import Input from "../../components/ui/Input";
+import Dropzone from "../../components/ui/Dropzone";
+import { walletService } from "../../services/walletService";
+import toast from "react-hot-toast";
 
 function Vault() {
-  const { user } = useAuth();
-  const account = useCurrentAccount();
-  const connectedAddress = account?.address || "";
+  const { user, setWalletAddress } = useAuth();
+  const connectedAddress = user?.walletAddress || "";
   const [credentials, setCredentials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("newest");
   const [selected, setSelected] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [externalForm, setExternalForm] = useState({
+    issuerId: "issuer-noncoop-01",
+    issuerName: "GrowthCert",
+    issuerVerified: false,
+    certId: "",
+    file: null,
+  });
+  const [checkingCert, setCheckingCert] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const creds = await candidateService.getCredentials(user.id);
+      const [creds, profileData] = await Promise.all([
+        candidateService.getCredentials(user.id),
+        candidateService.getCandidateProfile(user.id),
+      ]);
       setCredentials(creds);
+      setProfile(profileData);
       setLoading(false);
     };
     load();
   }, [user.id]);
+
+  const claimable = credentials.filter(
+    (cred) =>
+      (!cred.ownerAddress || cred.recipientType === "CCCD_HASH") &&
+      (cred.recipientType === "CCCD_HASH" || cred.cccdHashRef || cred.boundToIdentityRef)
+  );
 
   const filtered = useMemo(() => {
     let data = [...credentials];
@@ -44,6 +66,73 @@ function Vault() {
     return data;
   }, [credentials, filter, sort]);
 
+  const handleClaim = async (recordId) => {
+    if (!connectedAddress) {
+      toast.error("Connect wallet to claim");
+      return;
+    }
+    const updated = await candidateService.claimCredential(recordId, connectedAddress);
+    if (updated) {
+      setCredentials((prev) => prev.map((c) => (c.recordId === recordId ? updated : c)));
+      toast.success("Claimed to your wallet");
+    }
+  };
+
+  const handleExternalSubmit = async () => {
+    if (!connectedAddress) {
+      toast.error("Connect wallet to continue");
+      return;
+    }
+    if (!externalForm.certId) {
+      toast.error("Certificate ID is required");
+      return;
+    }
+    setCheckingCert(true);
+    try {
+      const fileMeta = externalForm.file
+        ? { walrusId: `walrus_${Date.now()}`, fileHash: `hash_${Date.now()}`, fileName: externalForm.file.name }
+        : null;
+      const newCred = await candidateService.addExternalCredential({
+        candidateId: user.id,
+        issuerId: externalForm.issuerId,
+        issuerName: externalForm.issuerName,
+        issuerVerified: externalForm.issuerVerified,
+        certId: externalForm.certId,
+        walrusFile: fileMeta,
+        walletAddress: connectedAddress,
+      });
+      setCredentials((prev) => [newCred, ...prev]);
+      toast.success(newCred.deposit?.status === "locked" ? "Deposit locked for review" : "Credential added");
+      setAdding(false);
+      setExternalForm({
+        issuerId: "issuer-noncoop-01",
+        issuerName: "GrowthCert",
+        issuerVerified: false,
+        certId: "",
+        file: null,
+      });
+    } catch (err) {
+      toast.error("Unable to add credential");
+    } finally {
+      setCheckingCert(false);
+    }
+  };
+
+  const handleConnect = async () => {
+    try {
+      const res = await walletService.connect();
+      const addr = normalizeAddress(res.address);
+      if (!isValidSuiAddressStrict(addr)) {
+        toast.error("Invalid wallet address");
+        return;
+      }
+      setWalletAddress(addr);
+      toast.success("Wallet connected");
+    } catch (err) {
+      toast.error("Wallet not found (install Slush)");
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -53,10 +142,19 @@ function Vault() {
           <p className="text-sm text-slate-600">Control visibility and share proofs when needed.</p>
         </div>
         <div className="flex items-center gap-2">
-          <CopyButton value={connectedAddress} />
-          <Button variant="secondary" icon={<Upload className="h-4 w-4" />}>
+          <CopyButton
+            value={connectedAddress}
+            disabled={!connectedAddress}
+            title={!connectedAddress ? "Connect wallet to copy" : ""}
+          />
+          <Button variant="secondary" icon={<Upload className="h-4 w-4" />} onClick={() => setAdding(true)}>
             Import PDF (UI)
           </Button>
+          {!connectedAddress && (
+            <Button variant="secondary" onClick={handleConnect}>
+              Connect wallet
+            </Button>
+          )}
         </div>
       </div>
 
@@ -89,6 +187,30 @@ function Vault() {
         </div>
       </div>
 
+      {claimable.length > 0 && (
+        <Card className="p-4 space-y-3 border border-amber-200 bg-amber-50">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-amber-700">Claimable credentials</p>
+              <p className="text-sm font-semibold text-amber-800">Issued to your CCCD hash. Claim to wallet.</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {claimable.map((cred) => (
+              <div key={cred.recordId} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm">
+                <div>
+                  <p className="font-semibold">{cred.type}</p>
+                  <p className="text-xs text-slate-500">{cred.recordId}</p>
+                </div>
+                <Button size="sm" onClick={() => handleClaim(cred.recordId)} disabled={!connectedAddress}>
+                  Claim
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {loading ? (
         <div className="grid gap-4 md:grid-cols-3">
           {[1, 2, 3].map((i) => (
@@ -112,9 +234,11 @@ function Vault() {
               )}
               <div className="relative flex flex-col gap-2">
                 <div className="flex items-center justify-between">
-                  <Badge variant={cred.status === "active" ? "success" : cred.status === "revoked" ? "danger" : "warning"}>
-                    {cred.status}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={cred.status === "active" ? "success" : cred.status === "revoked" ? "danger" : "warning"}>
+                      {cred.status}
+                    </Badge>
+                  </div>
                   {cred.visibility === "private" && (
                     <Badge variant="outline" className="flex items-center gap-1">
                       <Lock className="h-3 w-3" /> Private
@@ -187,6 +311,61 @@ function Vault() {
             )}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={adding}
+        onClose={() => setAdding(false)}
+        title="Add external credential"
+        description="Upload credential issued by an unverified issuer."
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
+            <Button loading={checkingCert} onClick={handleExternalSubmit}>
+              Submit
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            Issuer {externalForm.issuerName} is not verified. A deposit may be locked until verification completes.
+          </div>
+          <Input
+            label="Issuer"
+            value={externalForm.issuerName}
+            readOnly
+          />
+          <Input
+            label="Certificate ID"
+            value={externalForm.certId}
+            onChange={(e) => setExternalForm({ ...externalForm, certId: e.target.value })}
+            placeholder="Enter certificate ID"
+            required
+          />
+          <Dropzone
+            onFiles={(files) => setExternalForm({ ...externalForm, file: files?.[0] || null })}
+            helper="Upload credential PDF"
+          />
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={checkingCert}
+              onClick={async () => {
+                setCheckingCert(true);
+                const res = await candidateService.checkCertId(externalForm.certId || "N/A");
+                toast.success(`Check result: ${res.result}`);
+                setCheckingCert(false);
+              }}
+              icon={<PlusCircle className="h-4 w-4" />}
+            >
+              Check ID on cert
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

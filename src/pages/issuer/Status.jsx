@@ -6,7 +6,7 @@ import CopyButton from "../../components/ui/CopyButton";
 import { issuerService } from "../../services/issuerService";
 import { ShieldCheck, AlertTriangle } from "lucide-react";
 import Skeleton from "../../components/ui/Skeleton";
-import { maskAddress } from "../../utils/address";
+import { formatAddress } from "../../utils/address";
 
 function IssuerStatus() {
   const [status, setStatus] = useState(null);
@@ -38,13 +38,19 @@ function IssuerStatus() {
               {status.status === "ACTIVE" ? <ShieldCheck className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
               {status.status}
             </Badge>
-            <Badge variant="info">Verification level: {status.verificationLevel === 0 ? "None" : status.verificationLevel === 1 ? "Domain verified" : "Legally verified"}</Badge>
+            <Badge variant="info">
+              {status.verificationLevel === 0
+                ? "Not verified"
+                : status.verificationLevel === 1
+                ? "Verified"
+                : "Legally verified"}
+            </Badge>
           </div>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs text-slate-500">Issuer ID</p>
-            <p className="text-sm font-semibold">{maskAddress(status.issuerId)}</p>
+            <p className="text-sm font-semibold">{formatAddress(status.issuerId)}</p>
             <CopyButton value={status.issuerId} className="mt-2" />
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -88,12 +94,12 @@ function IssuerStatus() {
           <Button variant="primary" onClick={() => window.location.href = "/issuer/verification"}>
             Complete verification
           </Button>
-          {status.issuerType === "CO-OP" && status.verificationLevel >= 1 && (
+          {status.issuerType === "COOP" && status.verificationLevel >= 1 && (
             <Button variant="secondary" onClick={() => window.location.href = "/issuer/issue"}>
               Issue credential
             </Button>
           )}
-          {status.issuerType === "NON-CO-OP" && (
+          {status.issuerType === "NON_COOP" && (
             <Badge variant="warning">Issuing requires external verification</Badge>
           )}
         </div>

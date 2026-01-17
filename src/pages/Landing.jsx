@@ -45,31 +45,58 @@ const redirectMap = {
 function Landing() {
     const [tab, setTab] = useState("login");
     const [role, setRole] = useState("candidate");
-    const [form, setForm] = useState({ username: "", email: "", dob: "", password: "", cccd: "" });
+    const [form, setForm] = useState({
+        username: "",
+        email: "",
+        dob: "",
+        mobile: "",
+        password: "",
+        cccd: "",
+    });
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState({});
     const navigate = useNavigate();
     const { login } = useAuth();
 
-    const maskCccd = (value) => {
-        const sanitized = (value || "").trim();
-        if (!sanitized) return "";
-        const tail = sanitized.slice(-4);
-        const maskedPrefix = "*".repeat(Math.max(sanitized.length - 4, 4));
-        return `${maskedPrefix}${tail}`;
+    const getStoredNameForEmail = (email) => {
+        if (!email) return "";
+        try {
+            const stored = JSON.parse(localStorage.getItem("verifyme_user"));
+            if (stored?.email === email && stored?.name) return stored.name;
+        } catch (err) {
+            return "";
+        }
+        return "";
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         const nextErrors = {};
+        const trimmedEmail = form.email?.trim();
+        const trimmedUsername = form.username?.trim();
+        const trimmedMobile = form.mobile?.trim();
+        const isCandidate = role === "candidate";
+
         if (tab === "login") {
-            if (!form.email?.trim()) nextErrors.email = "Email is required";
+            if (!trimmedEmail) nextErrors.email = "Email is required";
             if (!form.password) nextErrors.password = "Password is required";
         } else {
-            if (!form.username?.trim()) nextErrors.username = "Username is required";
-            if (!form.email?.trim()) nextErrors.email = "Email is required";
-            if (!form.dob) nextErrors.dob = "Date of birth is required";
-            if (!form.cccd?.trim()) nextErrors.cccd = "National ID (CCCD) is required";
+            if (!trimmedUsername) nextErrors.username = "Username is required";
+            if (!trimmedEmail) nextErrors.email = "Email is required";
+            if (!trimmedMobile) {
+                nextErrors.mobile = "Mobile number is required";
+            } else {
+                const mobileDigits = trimmedMobile.replace(/\D/g, "");
+                if (mobileDigits.length < 8) {
+                    nextErrors.mobile = "Mobile number looks too short";
+                }
+            }
+            if (isCandidate && !form.dob) {
+                nextErrors.dob = "Date of birth is required";
+            }
+            if (isCandidate && !form.cccd?.trim()) {
+                nextErrors.cccd = "National ID (CCCD) is required";
+            }
             if (!form.password) nextErrors.password = "Password is required";
         }
         setErrors(nextErrors);
@@ -78,23 +105,35 @@ function Landing() {
         setLoading(true);
         try {
             if (tab === "login") {
-                const derivedName = form.email?.split("@")[0] || "Guest";
-                await login(role, { name: derivedName, email: form.email.trim() });
+                const storedName = getStoredNameForEmail(trimmedEmail);
+                const derivedName = storedName || trimmedEmail?.split("@")[0] || "Guest";
+                await login(
+                    role,
+                    { name: derivedName, username: storedName || "", email: trimmedEmail },
+                    { useDefaults: false }
+                );
                 toast.success("Signed in");
             } else {
-                const cccdMasked = maskCccd(form.cccd);
-                const cccdHashRef = `hash_ref_${(form.cccd || "").slice(-4)}_${Date.now()}`;
-                await login(role, {
-                    name: form.username.trim(),
-                    email: form.email.trim(),
-                    dob: form.dob,
-                    cccdMasked,
-                    cccdHashRef,
-                });
+                const payload = {
+                    name: trimmedUsername,
+                    username: trimmedUsername,
+                    email: trimmedEmail,
+                    mobile: trimmedMobile,
+                    dob: isCandidate ? form.dob : undefined,
+                    cccd: isCandidate ? form.cccd?.trim() : undefined,
+                };
+                await login(role, payload, { useDefaults: false });
                 toast.success("Account created");
             }
-            setForm({ username: "", email: "", dob: "", password: "", cccd: "" });
-            navigate(redirectMap[role]);
+            setForm({
+                username: "",
+                email: "",
+                dob: "",
+                mobile: "",
+                password: "",
+                cccd: "",
+            });
+            navigate(redirectMap[role] || "/");
         } catch (err) {
             toast.error("Sign-in failed");
         } finally {
@@ -193,7 +232,15 @@ function Landing() {
                                 {roles.map((r) => (
                                     <button
                                         key={r.value}
-                                        onClick={() => setRole(r.value)}
+                                        onClick={() => {
+                                            setRole(r.value);
+                                            if (r.value !== "candidate") {
+                                                setForm((prev) => ({
+                                                    ...prev,
+                                                    cccd: "",
+                                                }));
+                                            }
+                                        }}
                                         className={`rounded-xl border px-3 py-3 text-left transition hover:border-navy-200 ${
                                             role === r.value
                                                 ? "border-navy-400 bg-navy-50 shadow-sm"
@@ -247,7 +294,7 @@ function Landing() {
                                     placeholder="Enter your email"
                                     error={errors.email}
                                 />
-                                {tab === "signup" && (
+                                {tab === "signup" && role === "candidate" && (
                                     <Input
                                         label="DOB"
                                         type="date"
@@ -263,6 +310,22 @@ function Landing() {
                                     />
                                 )}
                                 {tab === "signup" && (
+                                    <Input
+                                        label="Mobile number"
+                                        type="tel"
+                                        required
+                                        value={form.mobile}
+                                        onChange={(e) =>
+                                            setForm({
+                                                ...form,
+                                                mobile: e.target.value,
+                                            })
+                                        }
+                                        placeholder="Enter your mobile number"
+                                        error={errors.mobile}
+                                    />
+                                )}
+                                {tab === "signup" && role === "candidate" && (
                                     <Input
                                         label="National ID (CCCD)"
                                         required
@@ -291,23 +354,15 @@ function Landing() {
                                     placeholder="Enter your password"
                                     error={errors.password}
                                 />
-                                {role === "candidate" && (
-                                    <div className="flex flex-col gap-2">
-                                        <Button
-                                            type="button"
-                                            variant="secondary"
-                                            className="w-full justify-center"
-                                        >
-                                            Continue with Google
-                                        </Button>
-                                        {/* <button
-                                            type="button"
-                                            className="text-xs font-semibold text-navy-600 hover:underline"
-                                        >
-                                            Advanced sign-in (passkey)
-                                        </button> */}
-                                    </div>
-                                )}
+                                <div className="flex flex-col gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        className="w-full justify-center"
+                                    >
+                                        Continue with Google
+                                    </Button>
+                                </div>
                                 <Button
                                     type="submit"
                                     loading={loading}
@@ -315,6 +370,26 @@ function Landing() {
                                     icon={<ArrowRight className="h-4 w-4" />}
                                 >
                                     Continue
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="w-full justify-center"
+                                    onClick={async () => {
+                                        await login(
+                                            "admin",
+                                            {
+                                                username: "Admin",
+                                                name: "Admin",
+                                                email: "admin@verifyme.test",
+                                            },
+                                            { useDefaults: false }
+                                        );
+                                        toast.success("Admin login");
+                                        navigate("/admin/reviews");
+                                    }}
+                                >
+                                    Continue as an Admin
                                 </Button>
                             </form>
                         </div>

@@ -2,8 +2,9 @@ export const issuerProfile = {
   id: "0xabc123abc123abc123abc123abc123abc123abc123abc123abc123abc123ab",
   issuerId: "0xabc123abc123abc123abc123abc123abc123abc123abc123abc123abc123ab",
   orgName: "Atlas University",
-  issuerType: "CO-OP",
+  issuerType: "COOP",
   verificationLevel: 1,
+  issuerVerified: false,
   status: "ACTIVE",
   statusVerified: true,
   website: "https://atlas.edu",
@@ -15,6 +16,9 @@ export const issuerProfile = {
   dnsProof: { recordId: "DNS-7781", domainHash: "hash_dns_atlas_123" },
   legalProof: null,
   legalStatus: "pending",
+  proofs: [
+    { method: "DNS", proofId: "DNS-7781", proofHash: "hash_dns_atlas_123", status: "VERIFIED", submittedAt: "2024-12-08T10:00:00Z" },
+  ],
 };
 
 export const issuerTeam = [

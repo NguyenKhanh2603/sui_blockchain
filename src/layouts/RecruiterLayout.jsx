@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -8,11 +8,17 @@ import {
   LogOut,
   Search,
   Bell,
+  Briefcase,
 } from "lucide-react";
 import { useAuth } from "../store/AuthContext";
+import { recruiterService } from "../services/recruiterService";
+import { isValidSuiAddressStrict, normalizeAddress } from "../utils/address";
+import toast from "react-hot-toast";
+import Badge from "../components/ui/Badge";
 
 const navItems = [
   { to: "/recruiter/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-5 w-5" /> },
+  { to: "/recruiter/jobs", label: "Jobs", icon: <Briefcase className="h-5 w-5" /> },
   { to: "/recruiter/saved", label: "Saved", icon: <Bookmark className="h-5 w-5" /> },
   { to: "/recruiter/notes", label: "Notes", icon: <StickyNote className="h-5 w-5" /> },
   { to: "/recruiter/settings", label: "Settings", icon: <Settings className="h-5 w-5" /> },
@@ -21,10 +27,33 @@ const navItems = [
 function RecruiterLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [quickQuery, setQuickQuery] = useState("");
+
+  const isVerified = Boolean(user?.verifiedStatus);
 
   const handleLogout = async () => {
     await logout();
     navigate("/");
+  };
+
+  const handleQuickSearch = async (value) => {
+    const query = value ?? quickQuery;
+    if (!query.trim()) return;
+    const normalized = normalizeAddress(query);
+    if (isValidSuiAddressStrict(normalized)) {
+      navigate(`/recruiter/candidate/${normalized}`);
+      return;
+    }
+    try {
+      const matches = await recruiterService.searchCandidatesByIdOrUsername(query);
+      if (matches.length > 0) {
+        navigate(`/recruiter/candidate/${matches[0].id}`);
+      } else {
+        toast.error("No candidate found");
+      }
+    } catch (err) {
+      toast.error("No candidate found");
+    }
   };
 
   return (
@@ -73,8 +102,16 @@ function RecruiterLayout() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
-                placeholder="Quick search candidate, record ID"
+                placeholder="Search by Candidate ID or username"
                 className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm focus:border-navy-300 focus:outline-none"
+                value={quickQuery}
+                onChange={(e) => setQuickQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleQuickSearch(e.target.value);
+                  }
+                }}
               />
             </div>
             <button className="rounded-full p-2 hover:bg-slate-100 text-slate-500">
@@ -86,7 +123,12 @@ function RecruiterLayout() {
               </div>
               <div className="hidden sm:block">
                 <p className="text-xs text-slate-500">Recruiter</p>
-                <p className="text-sm font-semibold">{user?.name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold">{user?.name}</p>
+                  <Badge variant={isVerified ? "success" : "warning"}>
+                    {isVerified ? "Verified" : "Unverified"}
+                  </Badge>
+                </div>
               </div>
             </div>
           </div>

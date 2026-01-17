@@ -10,15 +10,22 @@ import toast from "react-hot-toast";
 import { timeAgo } from "../../utils/formatters";
 
 function CandidateRequests() {
-  const { user } = useAuth();
+  const { user, login } = useAuth();
   const [requests, setRequests] = useState([]);
+  const [credentials, setCredentials] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [claiming, setClaiming] = useState(false);
 
   useEffect(() => {
-    const load = async () => {
-      const data = await candidateService.getAccessRequests(user.id);
+    const load = async (withLoading = true) => {
+      if (withLoading) setLoading(true);
+      const [data, creds] = await Promise.all([
+        candidateService.getAccessRequests(user.id),
+        candidateService.getCredentials(user.id),
+      ]);
       setRequests(data);
-      setLoading(false);
+      setCredentials(creds);
+      if (withLoading) setLoading(false);
     };
     load();
   }, [user.id]);
@@ -29,12 +36,79 @@ function CandidateRequests() {
     toast.success(status === "unlocked" ? "Access granted" : "Rejected");
   };
 
+  const claimableCredentials = credentials.filter((cred) => cred.boundToIdentityRef);
+
+  const handleClaim = async () => {
+    if (claimableCredentials.length === 0) return;
+    setClaiming(true);
+    const result = await candidateService.linkIdentityDemoAndClaim(user.id);
+    const updatedCreds = await candidateService.getCredentials(user.id);
+    setCredentials(updatedCreds);
+    if (result?.profile && login) {
+      await login(
+        user.role,
+        {
+          ...user,
+          hasCCCD: result.profile.hasCCCD,
+          cccdHashRef: result.profile.cccdHashRef,
+        },
+        { useDefaults: false }
+      );
+    }
+    toast.success("Identity linked. Credentials claimed.");
+    setClaiming(false);
+  };
+
   return (
     <div className="space-y-4">
       <div>
         <p className="text-xs font-semibold text-slate-500">Requests</p>
         <h1 className="text-2xl font-bold text-slate-900">Manage access</h1>
       </div>
+
+      <section className="space-y-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-500">Claimable credentials</p>
+            <h2 className="text-lg font-bold text-slate-900">Link identity to claim</h2>
+          </div>
+          <Button
+            variant="secondary"
+            loading={claiming}
+            onClick={handleClaim}
+            disabled={claimableCredentials.length === 0}
+          >
+            Link identity &amp; claim (demo)
+          </Button>
+        </div>
+
+        {loading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : claimableCredentials.length === 0 ? (
+          <Card className="p-6 text-center text-slate-500 border-dashed">
+            No claimable credentials yet.
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {claimableCredentials.map((cred) => (
+              <Card key={cred.recordId} className="flex flex-col gap-2 p-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{cred.type}</p>
+                  <p className="text-xs text-slate-500">
+                    {cred.issuerName} • {cred.recordId}
+                  </p>
+                  <Badge variant="warning" className="mt-2">
+                    Identity-bound
+                  </Badge>
+                </div>
+                <div className="text-sm text-slate-600">
+                  Awaiting link to your CCCD
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
 
       {loading ? (
         <Skeleton className="h-32 w-full" />

@@ -34,13 +34,25 @@ function Compliance() {
       <Card className="p-4 space-y-1">
         <p className="text-sm font-semibold text-slate-700">Legal verification status</p>
         <p className="text-sm text-slate-700">
-          Status: <Badge variant={profile?.legalStatus === "approved" ? "success" : "warning"}>{profile?.legalStatus || "pending"}</Badge>
+          Status:{" "}
+          <Badge
+            variant={
+              profile?.legalStatus === "approved"
+                ? "success"
+                : profile?.legalStatus === "rejected"
+                ? "danger"
+                : "warning"
+            }
+          >
+            {(profile?.legalStatus || "pending").replace(/_/g, " ")}
+          </Badge>
         </p>
         {profile?.legalProof && (
           <p className="text-xs text-slate-600">
-            Legal proof Record ID: {profile.legalProof.recordId} · Hash reference: {profile.legalProof.legalDocHash}
+            Proof record: {profile.legalProof.recordId} · Hash: {profile.legalProof.legalDocHash}
           </p>
         )}
+        {!profile?.legalProof && <p className="text-xs text-slate-500">Awaiting approval.</p>}
       </Card>
       <Card className="p-4">
         <Table

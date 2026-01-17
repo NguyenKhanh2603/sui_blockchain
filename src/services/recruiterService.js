@@ -1,5 +1,6 @@
 import { candidates } from "../mocks/candidates";
 import { credentials } from "../mocks/credentials";
+import { reviewState } from "../state/reviewState";
 import { isValidSuiAddressStrict, normalizeAddress } from "../utils/address";
 
 const delay = (data, ms = 500) =>
@@ -9,6 +10,33 @@ const delay = (data, ms = 500) =>
       resolve(data);
     }, ms);
   });
+
+const randomId = (prefix) => `${prefix}-${Math.floor(Math.random() * 9000 + 1000)}`;
+let recruiterProfileState = {
+  id: "recruiter-01",
+  name: "Nova Recruiter",
+  orgName: "NovaHire",
+  verifiedStatus: false,
+  email: "trust@novahire.com",
+};
+let jobsState = [
+  {
+    id: "job-1",
+    title: "Product Designer",
+    keywords: ["design", "figma", "portfolio"],
+    minTrust: 80,
+    status: "active",
+    updatedAt: "2024-12-10T10:00:00Z",
+  },
+  {
+    id: "job-2",
+    title: "Backend Engineer",
+    keywords: ["node", "api", "sql"],
+    minTrust: 0,
+    status: "draft",
+    updatedAt: "2024-12-08T08:00:00Z",
+  },
+];
 
 export const recruiterService = {
   async getRecentCandidates() {
@@ -38,5 +66,84 @@ export const recruiterService = {
     return delay(
       credentials.filter((c) => normalizeAddress(c.candidateId) === normalized)
     );
+  },
+  async searchCandidatesByIdOrUsername(query = "") {
+    const normalizedId = normalizeAddress(query);
+    if (isValidSuiAddressStrict(normalizedId)) {
+      const match = candidates.find((c) => normalizeAddress(c.id) === normalizedId);
+      return delay(match ? [match] : []);
+    }
+    const tokens = query
+      .toLowerCase()
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!tokens.length) return delay(candidates);
+    const matches = candidates.filter((c) => {
+      const name = (c.name || "").toLowerCase();
+      const username = (c.username || "").toLowerCase();
+      return tokens.every((t) => name.includes(t) || username.includes(t));
+    });
+    return delay(matches);
+  },
+  async submitLegalDocs(files = []) {
+    const submission = {
+      submissionId: randomId("SUB"),
+      entityId: recruiterProfileState.id,
+      entityName: recruiterProfileState.orgName,
+      roleType: "RECRUITER",
+      status: "PENDING",
+      submittedAt: new Date().toISOString(),
+      email: recruiterProfileState.email,
+      files: files.length ? files : [{ name: "recruiter-legal-pack.pdf", url: "" }],
+      notes: "Submitted from recruiter portal",
+    };
+    reviewState.addSubmission(submission);
+    reviewState.addAuditLog({
+      actor: recruiterProfileState.orgName,
+      action: "SUBMITTED_LEGAL",
+      targetId: submission.submissionId,
+      result: "pending",
+    });
+    return delay(submission);
+  },
+  applyVerificationApproval(proofRecordId) {
+    recruiterProfileState = { ...recruiterProfileState, verifiedStatus: true, proofRecordId };
+    return recruiterProfileState;
+  },
+  async getRecruiterProfile() {
+    return delay(recruiterProfileState);
+  },
+  async listJobs() {
+    return delay([...jobsState]);
+  },
+  async saveJob(job) {
+    if (job.id) {
+      jobsState = jobsState.map((j) => (j.id === job.id ? { ...j, ...job, updatedAt: new Date().toISOString() } : j));
+      return delay(jobsState.find((j) => j.id === job.id));
+    }
+    const created = { ...job, id: randomId("job"), updatedAt: new Date().toISOString() };
+    jobsState = [created, ...jobsState];
+    return delay(created);
+  },
+  async setActiveJob(jobId) {
+    jobsState = jobsState.map((j) => ({ ...j, status: j.id === jobId ? "active" : "draft" }));
+    return delay(jobsState.find((j) => j.id === jobId));
+  },
+  async getActiveJob() {
+    return delay(jobsState.find((j) => j.status === "active") || null);
+  },
+  async recommendedCandidatesForJob(job) {
+    if (!job) return delay([]);
+    const keywords = (job.keywords || []).map((k) => k.toLowerCase());
+    const scored = candidates.map((c) => {
+      const text = `${c.bio || ""}`.toLowerCase();
+      const matchCount = keywords.reduce((acc, kw) => (text.includes(kw) ? acc + 1 : acc), 0);
+      return { ...c, score: matchCount };
+    });
+    const filtered = scored
+      .filter((c) => c.score > 0 && (!job.minTrust || c.trustScore >= job.minTrust))
+      .sort((a, b) => b.score - a.score);
+    return delay(filtered);
   },
 };

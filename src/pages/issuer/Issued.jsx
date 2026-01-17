@@ -1,14 +1,12 @@
 import React, { useEffect, useState } from "react";
 import Table from "../../components/ui/Table";
 import Badge from "../../components/ui/Badge";
-import Select from "../../components/ui/Select";
 import Button from "../../components/ui/Button";
 import Modal from "../../components/ui/Modal";
 import { issuerService } from "../../services/issuerService";
 import { formatDate } from "../../utils/formatters";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
-import Input from "../../components/ui/Input";
 import { maskAddress } from "../../utils/address";
 
 const statusVariant = (status) => {
@@ -84,8 +82,9 @@ function IssuedList() {
           <p className="text-xs font-semibold text-slate-500">Issued</p>
           <h1 className="text-2xl font-bold text-slate-900">Registry entries</h1>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <Select
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-navy-100"
             value={filters.status}
             onChange={(e) => setFilters({ ...filters, status: e.target.value })}
           >
@@ -94,26 +93,29 @@ function IssuedList() {
             <option value="VERIFIED">Verified</option>
             <option value="REJECTED">Rejected</option>
             <option value="REVOKED">Revoked</option>
-          </Select>
-          <Select
+          </select>
+          <select
+            className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-navy-100"
             value={filters.recipientType}
             onChange={(e) => setFilters({ ...filters, recipientType: e.target.value })}
           >
             <option value="">All recipients</option>
             <option value="CANDIDATE_ID">Candidate ID</option>
             <option value="CCCD_HASH">CCCD hash ref</option>
-          </Select>
-          <Input
+          </select>
+          <input
             type="date"
+            className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-navy-100"
             value={filters.from}
             onChange={(e) => setFilters({ ...filters, from: e.target.value })}
-            label="From"
+            aria-label="From date"
           />
-          <Input
+          <input
             type="date"
+            className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-navy-100"
             value={filters.to}
             onChange={(e) => setFilters({ ...filters, to: e.target.value })}
-            label="To"
+            aria-label="To date"
           />
         </div>
       </div>

@@ -19,6 +19,8 @@ export const credentials = [
     dataHash: "hash_rec_2481",
     cccdHashRef: null,
     cccdMasked: null,
+    boundToIdentityRef: false,
+    issuerVerified: true,
   },
   {
     recordId: "REC-2482",
@@ -40,6 +42,7 @@ export const credentials = [
     dataHash: "hash_rec_2482",
     cccdHashRef: null,
     cccdMasked: null,
+    boundToIdentityRef: false,
   },
   {
     recordId: "REC-2483",
@@ -61,6 +64,31 @@ export const credentials = [
     dataHash: "hash_rec_2483",
     cccdHashRef: null,
     cccdMasked: null,
+    boundToIdentityRef: false,
+  },
+  {
+    recordId: "REC-2484",
+    candidateId: "0x91ab23cc98ddee11223344556677889900aabbccddeeff001122334455667788",
+    issuerId: "0x5025025025025025025025025025025025025025025025025025025025025025",
+    issuerName: "ComplianceHub",
+    type: "Identity Verification",
+    level: "Level I",
+    issuedAt: "2024-05-20",
+    expiresAt: null,
+    status: "ISSUED",
+    issuerStatus: "VERIFIED",
+    visibility: "private",
+    category: "verified",
+    sensitive: true,
+    proofUrl: "https://example.com/proof/REC-2484",
+    recipientType: "CCCD_HASH",
+    ownerCandidateId: null,
+    dataHash: "hash_rec_2484",
+    cccdHashRef: "hash_cccd_2484",
+    cccdMasked: "********2484",
+    boundToIdentityRef: true,
+    issuerVerified: false,
+    deposit: { required: false, amount: 0, status: "refunded" },
   },
   {
     recordId: "REC-3101",
@@ -82,6 +110,7 @@ export const credentials = [
     dataHash: "hash_rec_3101",
     cccdHashRef: null,
     cccdMasked: null,
+    boundToIdentityRef: false,
   },
   {
     recordId: "REC-3102",
@@ -103,6 +132,7 @@ export const credentials = [
     dataHash: "hash_rec_3102",
     cccdHashRef: null,
     cccdMasked: null,
+    boundToIdentityRef: false,
   },
   {
     recordId: "REC-3103",
@@ -124,6 +154,7 @@ export const credentials = [
     dataHash: "hash_rec_3103",
     cccdHashRef: null,
     cccdMasked: null,
+    boundToIdentityRef: false,
   },
   {
     recordId: "REC-4801",
@@ -145,6 +176,7 @@ export const credentials = [
     dataHash: "hash_rec_4801",
     cccdHashRef: null,
     cccdMasked: null,
+    boundToIdentityRef: false,
   },
   {
     recordId: "REC-4802",
@@ -166,6 +198,9 @@ export const credentials = [
     dataHash: "hash_rec_4802",
     cccdHashRef: "hash_cccd_4802",
     cccdMasked: "********4802",
+    boundToIdentityRef: true,
+    issuerVerified: false,
+    deposit: { required: true, amount: 50, status: "locked" },
   },
   {
     recordId: "REC-9100",
@@ -187,5 +222,7 @@ export const credentials = [
     dataHash: "hash_rec_9100",
     cccdHashRef: "hash_cccd_9100",
     cccdMasked: "********9100",
+    boundToIdentityRef: true,
+    issuerVerified: false,
   },
 ];

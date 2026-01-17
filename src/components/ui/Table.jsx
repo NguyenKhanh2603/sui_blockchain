@@ -76,7 +76,7 @@ function Table({ columns = [], data = [], emptyLabel = "No data", onRowClick }) 
           )}
           {sorted.map((row) => (
             <tr
-              key={row.id || row.recordId || row.requestId}
+              key={row.id || row.recordId || row.requestId || row.submissionId}
               className={clsx(onRowClick && "cursor-pointer hover:bg-slate-50")}
               onClick={() => onRowClick?.(row)}
             >
