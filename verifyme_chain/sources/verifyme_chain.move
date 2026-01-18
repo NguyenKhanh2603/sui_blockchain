@@ -158,7 +158,7 @@ module verifyme_chain::verifyme_chain {
 
         // ai gọi init sẽ nhận admin cap + registry object
         transfer::transfer(admin, tx_context::sender(ctx));
-        transfer::transfer(reg, tx_context::sender(ctx));
+        transfer::share_object(reg);
     }
 
     /***************

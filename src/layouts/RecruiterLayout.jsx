@@ -27,9 +27,16 @@ const navItems = [
 function RecruiterLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [profile, setProfile] = useState(null);
   const [quickQuery, setQuickQuery] = useState("");
 
-  const isVerified = Boolean(user?.verifiedStatus);
+  const isVerified = Boolean(user?.verifiedStatus || profile?.verifiedStatus);
+
+  React.useEffect(() => {
+    if (user?.walletAddress) {
+        recruiterService.getRecruiterProfile(user.walletAddress).then(setProfile);
+    }
+  }, [user]);
 
   const handleLogout = async () => {
     await logout();

@@ -5,8 +5,7 @@ edition = "2024"         # edition = "legacy" to use legacy (pre-2024) Move
 # authors = ["..."]      # e.g., ["Joe Smith (joesmith@noemail.com)", "John Snow (johnsnow@noemail.com)"]
 
 [dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
 
-# Read more about the package management system options:
-# https://docs.sui.io/guides/developer/sui-101/move-package-management
-[environments]
-devnet = "a5b3326b"
+[addresses]
+verifyme_chain = "0x0"

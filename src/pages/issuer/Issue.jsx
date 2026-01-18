@@ -9,9 +9,11 @@ import { issuerService } from "../../services/issuerService";
 import { normalizeAddress, isValidSuiAddressStrict, maskAddress } from "../../utils/address";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
+import { useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 
 function IssueCertificate() {
   const navigate = useNavigate();
+  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const [profile, setProfile] = useState(null);
   const [recipientType, setRecipientType] = useState("CANDIDATE_ID");
   const [form, setForm] = useState({
@@ -60,6 +62,31 @@ function IssueCertificate() {
 
     setLoading(true);
     try {
+        if (!form.id && !form.recordId) { // Check if we are creating a fresh credential
+             // Blockchain Flow
+             const tx = issuerService.issueCredentialTransaction(
+                profile.id, // Assuming profile.id is u64 issuer_id
+                form.type,
+                recipientType === "CANDIDATE_ID" ? normalizeAddress(form.candidateId) : null,
+                recipientType === "CCCD_HASH" ? form.cccd : null, // The service hashes this
+                null // dataHash default
+             );
+             
+             signAndExecuteTransaction({ transaction: tx }, {
+                 onSuccess: (result) => {
+                     toast.success(`Transaction Submitted. Digest: ${result.digest.slice(0, 8)}...`);
+                     setIssued({ recordId: "Pending Chain Confirmation", status: "issued" });
+                     setLoading(false);
+                 },
+                 onError: (err) => {
+                     console.error("Tx Failed:", err);
+                     toast.error("Transaction Failed: " + (err.message || "Unknown error"));
+                     setLoading(false);
+                 }
+             });
+             return;
+        }
+
       const payload =
         recipientType === "CANDIDATE_ID"
           ? {

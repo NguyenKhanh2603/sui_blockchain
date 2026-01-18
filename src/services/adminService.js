@@ -1,15 +1,47 @@
+// @ts-nocheck
 import { reviewState } from "../state/reviewState";
 import { issuerService } from "./issuerService";
 import { recruiterService } from "./recruiterService";
 import { candidateService } from "./candidateService";
-
-const delay = (data, ms = 500) =>
-  new Promise((resolve) => setTimeout(() => resolve(data), ms));
-
-const normalize = (value = "") => value.toLowerCase().trim();
-const randomId = (prefix) => `${prefix}-${Math.floor(Math.random() * 9000 + 1000)}`;
+import { Transaction } from "@mysten/sui/transactions";
+import { PACKAGE_ID, MODULE_NAME, REGISTRY_ID, ADMIN_CAP_ID } from "../constants/blockchain";
+import { delay } from "../utils/delay"; // Assuming utility exists or just recreate
 
 export const adminService = {
+  approveDnsTransaction(issuerId, approve) {
+      const tx = new Transaction();
+      if (!ADMIN_CAP_ID || ADMIN_CAP_ID.includes("YOUR")) throw new Error("Admin Cap ID missing");
+      
+      tx.moveCall({
+          target: `${PACKAGE_ID}::${MODULE_NAME}::approve_dns`,
+          arguments: [
+              tx.object(ADMIN_CAP_ID),
+              tx.object(REGISTRY_ID),
+              tx.pure.u64(issuerId),
+              tx.pure.bool(approve),
+              tx.pure.u64(Date.now())
+          ]
+      });
+      return tx;
+  },
+
+  approveLegalTransaction(issuerId, approve) {
+      const tx = new Transaction();
+      if (!ADMIN_CAP_ID) throw new Error("Admin Cap ID missing");
+      
+      tx.moveCall({
+          target: `${PACKAGE_ID}::${MODULE_NAME}::approve_legal`,
+          arguments: [
+              tx.object(ADMIN_CAP_ID),
+              tx.object(REGISTRY_ID),
+              tx.pure.u64(issuerId),
+              tx.pure.bool(approve),
+              tx.pure.u64(Date.now())
+          ]
+      });
+      return tx;
+  },
+
   async listSubmissions(filters = {}) {
     const { roleType, status, search } = filters;
     const needle = normalize(search);

@@ -6,18 +6,46 @@ import CopyButton from "../../components/ui/CopyButton";
 import { issuerService } from "../../services/issuerService";
 import { ShieldCheck, AlertTriangle } from "lucide-react";
 import Skeleton from "../../components/ui/Skeleton";
-import { formatAddress } from "../../utils/address";
+import { useNavigate } from "react-router-dom";
+import { useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { useAuth } from "../../store/AuthContext";
+import toast from "react-hot-toast";
 
 function IssuerStatus() {
   const [status, setStatus] = useState(null);
+  const { user } = useAuth();
+  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
 
   useEffect(() => {
-    issuerService.getIssuerProfile().then(setStatus);
-  }, []);
+    if (user?.walletAddress) {
+        issuerService.getIssuerProfile(user.walletAddress).then(setStatus);
+    }
+  }, [user]);
+
+  const handleRegister = async (type) => {
+    try {
+        const tx = issuerService.registerIssuerTransaction(type);
+        signAndExecuteTransaction({ transaction: tx }, {
+            onSuccess: (res) => {
+                toast.success("Registration Transaction Sent!");
+                setTimeout(() => window.location.reload(), 2000);
+            },
+            onError: (err) => {
+                console.error(err);
+                toast.error("Registration failed");
+            }
+        });
+    } catch(e) {
+        console.error(e);
+        toast.error("Error building transaction");
+    }
+  };
 
   if (!status) {
     return <Skeleton className="h-36 w-full" />;
   }
+  
+  const isUnregistered = status.status === "Unregistered" || status.orgName === "Unregistered Organization";
 
   return (
     <div className="space-y-4">
@@ -25,6 +53,20 @@ function IssuerStatus() {
         <p className="text-xs font-semibold text-slate-500">Issuer</p>
         <h1 className="text-2xl font-bold text-slate-900">Status & identity</h1>
       </div>
+
+      {isUnregistered && (
+          <Card className="p-6 border-l-4 border-l-blue-500 bg-blue-50">
+              <h2 className="text-lg font-bold text-slate-900 mb-2">Join VerifyMe as an Issuer</h2>
+              <p className="text-sm text-slate-700 mb-4">
+                  You are currently viewing as an unregistered address. To start issuing credentials, please register on the blockchain.
+              </p>
+              <div className="flex gap-4">
+                  <Button onClick={() => handleRegister("COOP")}>Register as Co-op (Level 1)</Button>
+                  <Button variant="secondary" onClick={() => handleRegister("NON_COOP")}>Register as Non-coop (Level 2)</Button>
+              </div>
+          </Card>
+      )}
+
       <Card className="p-6 space-y-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>

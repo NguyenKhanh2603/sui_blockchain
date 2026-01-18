@@ -119,7 +119,17 @@ export const recruiterService = {
     recruiterProfileState = { ...recruiterProfileState, verifiedStatus: true, proofRecordId };
     return recruiterProfileState;
   },
-  async getRecruiterProfile() {
+  async getRecruiterProfile(idOrAddress) {
+    if (idOrAddress && idOrAddress.startsWith("0x") && idOrAddress !== recruiterProfileState.id) {
+       // Return a dynamic profile for this blockchain user
+       return delay({
+           id: idOrAddress,
+           name: "Recruiter " + idOrAddress.slice(0,6),
+           orgName: "On-Chain Corp",
+           verifiedStatus: false,
+           email: "recruiter@verifyme.test"
+       });
+    }
     return delay(recruiterProfileState);
   },
   async listJobs() {

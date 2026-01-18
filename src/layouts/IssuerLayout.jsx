@@ -33,8 +33,13 @@ function IssuerLayout() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    issuerService.getIssuerProfile().then(setStatus);
-  }, []);
+    if (user?.walletAddress) {
+      issuerService.getIssuerProfile(user.walletAddress).then(setStatus);
+    } else {
+      // Fallback for mock user ID or handle error
+      issuerService.getIssuerProfile().then(setStatus);
+    }
+  }, [user]);
 
   const handleLogout = async () => {
     await logout();

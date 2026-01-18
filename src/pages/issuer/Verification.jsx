@@ -8,7 +8,11 @@ import { issuerService } from "../../services/issuerService";
 import CopyButton from "../../components/ui/CopyButton";
 import toast from "react-hot-toast";
 
+import { useNavigate } from "react-router-dom";
+import { useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+
 function Verification() {
+  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const [domain, setDomain] = useState("");
   const [tokenInfo, setTokenInfo] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -26,6 +30,7 @@ function Verification() {
   }, []);
 
   const generateToken = async () => {
+    // In production, this would register the domain on backend
     const res = await issuerService.startDnsSetup(domain);
     if (res?.error) {
       setDnsError(res.error);
@@ -37,34 +42,67 @@ function Verification() {
 
   const checkVerification = async () => {
     setChecking(true);
-    const updated = await issuerService.checkDns(domain);
-    setProfile(updated);
-    setDnsError(updated?.dnsError || "");
-    if (updated?.dnsError) {
-      toast.error(updated.dnsError);
-    } else if ((updated?.verificationLevel || 0) >= 1) {
-      toast.success("Domain verified");
+    // Send Transaction to Blockchain
+    if (profile && profile.id) {
+        try {
+            const tx = issuerService.requestDnsVerificationTransaction(profile.id, domain);
+            signAndExecuteTransaction({ transaction: tx }, {
+                onSuccess: (res) => {
+                   toast.success("DNS Verification Requested On-Chain!");
+                   setChecking(false);
+                },
+                onError: (err) => {
+                   console.error(err);
+                   toast.error("Failed to request verification");
+                   setChecking(false);
+                }
+            });
+            return;
+        } catch (e) {
+            console.error(e);
+        }
     }
+    // Fallback to mock if no profile.id (should confirm registration first)
+    toast.error("Please ensure you are registered on-chain first.");
     setChecking(false);
   };
 
   const submitLegal = async () => {
-    const updated = await issuerService.submitLegalDocs(uploadedFiles);
-    setProfile(updated);
-    setLegalStatus(updated.legalStatus || "under_review");
-    toast.success("Submitted for review");
+    if (profile && profile.id) {
+         try {
+             // Mock hash for files
+             const legalHash = `hash_legal_${Date.now()}`;
+             const tx = issuerService.requestLegalVerificationTransaction(profile.id, legalHash);
+             signAndExecuteTransaction({ transaction: tx }, {
+                 onSuccess: (res) => {
+                     toast.success("Legal Documents Submitted On-Chain!");
+                     setLegalStatus("under_review");
+                 },
+                 onError: (err) => {
+                     console.error(err);
+                     toast.error("Failed to submit legal docs");
+                 }
+             });
+             return;
+         } catch(e) {
+             console.error(e);
+         }
+    }
+    toast.error("Registration required first.");
   };
 
   const approveLegal = async () => {
-    const updated = await issuerService.approveLegalDemo();
-    setProfile(updated);
-    setLegalStatus(updated.legalStatus || "approved");
-    toast.success("Marked approved (demo)");
+     // This was a demo function for self-approval in mock mode
+     toast.error("Only Admin can approve legal verification.");
   };
 
+  const isCoop = (profile?.issuerType === "COOP" || profile?.issuerType === 1);
+  const isUnregistered = !profile?.id || profile?.status === "Unregistered";
+  
+  // Logic Fix: Only show "Completed" if blockchain says verification_level is high enough
   const hasDomain = (profile?.verificationLevel || 0) >= 1;
   const hasLegal = (profile?.verificationLevel || 0) >= 2;
-  const isCoop = profile?.issuerType === "COOP";
+  
   const canStartLegal = isCoop ? hasDomain : true;
   const proofRecords = profile?.proofs || [];
   const dnsProof = proofRecords.find((p) => p.method === "DNS") || profile?.dnsProof;
@@ -74,7 +112,8 @@ function Verification() {
     {
       key: "dns",
       label: "Domain (DNS TXT)",
-      status: !isCoop ? "skipped" : hasDomain ? "completed" : "pending",
+      // If unregistered, everything is pending. If unregistered, can't be completed.
+      status: isUnregistered ? "pending" : (!isCoop ? "skipped" : hasDomain ? "completed" : "pending"),
     },
     {
       key: "legal",

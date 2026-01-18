@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { blockchainService } from "../services/blockchainService";
 import { isValidSlushAddress, normalizeSlushAddress } from "../utils/address";
 
 const AuthContext = createContext();
@@ -57,22 +58,52 @@ export function AuthProvider({ children }) {
   const login = (role, payload = {}, options = {}) =>
     new Promise((resolve) => {
       setTimeout(() => {
-        const { useDefaults = true } = options;
-        const profile = useDefaults ? defaultProfiles[role] || {} : {};
-        const username = payload.username || profile.username || "";
+        // If payload has a wallet address, we MUST use it as the ID and not fallback to mock ID.
+        // This ensures every wallet is treated as a unique user.
+        const id = payload.walletAddress || payload.id || crypto.randomUUID();
+        
         const resolved = {
-          ...profile,
-          ...payload,
           role,
-          email: payload.email || profile.email || "",
-          username,
-          name: payload.name || username || profile.name || (payload.email ? payload.email.split("@")[0] : "Guest"),
-          mobile: payload.mobile || profile.mobile || "",
-          dob: payload.dob || profile.dob,
-          cccd: payload.cccd || profile.cccd,
-          walletAddress: payload.walletAddress || profile.walletAddress || "",
-          id: payload.id || profile.id || crypto.randomUUID(),
+          email: payload.email || "",
+          username: payload.username || "",
+          name: payload.name || (payload.walletAddress ? `User ${payload.walletAddress.slice(0, 6)}...` : "Guest"),
+          mobile: payload.mobile || "",
+          dob: payload.dob,
+          cccd: payload.cccd,
+          walletAddress: payload.walletAddress || "",
+          id: id,
         };
+        
+        // Only merge defaults if specifically requested AND we are in a pure mock mode (no wallet)
+        // Check if we are "forcing" mock profiles for demo purposes, otherwise use real data.
+        if (options.useDefaults && !payload.walletAddress) {
+             const def = defaultProfiles[role] || {};
+             Object.assign(resolved, def);
+        }
+
+        // --- BLOCKCHAIN CHECK ---
+        // Verify if this user is actually registered on-chain
+        if (payload.walletAddress) {
+          console.group(`🔗 Checking Blockchain Status for [${role}]`);
+          console.log(`Wallet: ${payload.walletAddress}`);
+          
+          if (role === 'issuer') {
+             blockchainService.getIssuerByAddress(payload.walletAddress)
+               .then(issuer => {
+                 if (issuer) {
+                   console.log("✅ ON-CHAIN: User is a registered ISSUER.", issuer);
+                 } else {
+                   console.warn("⚠️ ON-CHAIN: User is NOT registered as an issuer.");
+                 }
+               })
+               .catch(err => console.error("❌ Blockchain Query Failed:", err));
+          } else {
+             console.log("ℹ️ Blockchain check skipped (role not fully integrated yet)");
+          }
+          console.groupEnd();
+        }
+        // ------------------------
+
         setUser(resolved);
         resolve(resolved);
       }, 600);

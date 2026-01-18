@@ -1,9 +1,12 @@
+// @ts-nocheck
 import { candidates as candidateMocks } from "../mocks/candidates";
 import { credentials as credentialMocks } from "../mocks/credentials";
 import { accessRequests } from "../mocks/requests";
 import { normalizeAddress } from "../utils/address";
 import { depositService } from "./depositService";
 import { verificationService } from "./verificationService";
+import { Transaction } from "@mysten/sui/transactions";
+import { PACKAGE_ID, MODULE_NAME, REGISTRY_ID } from "../constants/blockchain";
 
 const delay = (data, ms = 500) =>
   new Promise((resolve) => setTimeout(() => resolve(data), ms));
@@ -21,6 +24,23 @@ const legacyDepositStatus = (deposit = {}) => {
 
 export const candidateService = {
   async getProfile(candidateId) {
+    // If candidateId looks like an address, return a minimal profile for it
+    if (candidateId && candidateId.startsWith("0x")) {
+        // Try to find if we have mock data, else return fresh profile
+        const normalized = normalizeAddress(candidateId);
+        const profile = candidateState.find((c) => normalizeAddress(c.id) === normalized);
+        if (profile) return delay({ ...profile });
+        
+        // Return a fresh "on-chain" style profile
+        return delay({
+            id: normalized,
+            name: `Candidate ${normalized.slice(0, 6)}...`,
+            role: "candidate",
+            email: "",
+            walletAddress: normalized
+        });
+    }
+
     const normalized = normalizeAddress(candidateId);
     const profile = candidateState.find((c) => normalizeAddress(c.id) === normalized) || null;
     return delay(profile ? { ...profile } : null);
@@ -59,6 +79,43 @@ export const candidateService = {
     );
     return delay(list);
   },
+
+  claimCredentialTransaction(credentialId, cccdHash) {
+      const tx = new Transaction();
+      // cccdHash from user input
+      const cccdBytes = new TextEncoder().encode(cccdHash);
+      
+      tx.moveCall({
+          target: `${PACKAGE_ID}::${MODULE_NAME}::claim_credential_by_cccd`,
+          arguments: [
+              tx.object(REGISTRY_ID),
+              tx.pure.u64(credentialId),
+              tx.pure.vector("u8", Array.from(cccdBytes)),
+              tx.pure.u64(Date.now())
+          ]
+      });
+      return tx;
+  },
+  
+  submitSelfDeclaredCredentialTransaction(issuerId, type, dataHash, ownerAddr) {
+      const tx = new Transaction();
+      const typeBytes = new TextEncoder().encode(type);
+      const dataBytes = new TextEncoder().encode(dataHash);
+
+      tx.moveCall({
+         target: `${PACKAGE_ID}::${MODULE_NAME}::submit_credential_by_user_noncoop`,
+         arguments: [
+            tx.object(REGISTRY_ID),
+            tx.pure.u64(issuerId), // Non-coop issuer ID logic required
+            tx.pure.vector("u8", Array.from(typeBytes)),
+            tx.pure.address(ownerAddr),
+            tx.pure.vector("u8", Array.from(dataBytes)),
+            tx.pure.u64(Date.now())
+         ]
+      });
+      return tx;
+  },
+
   async linkIdentityDemoAndClaim(candidateId) {
     const normalized = normalizeAddress(candidateId);
     const index = candidateState.findIndex((c) => normalizeAddress(c.id) === normalized);
