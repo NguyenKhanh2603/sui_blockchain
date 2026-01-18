@@ -8,7 +8,7 @@ import { useAuth } from "./AuthContext";
 const WalletContext = createContext();
 
 export function WalletProvider({ children }) {
-  const { setWalletAddress } = useAuth();
+  const { setWalletAddress, login, user } = useAuth();
   const [state, setState] = useState({
     connected: false,
     address: "",
@@ -18,6 +18,17 @@ export function WalletProvider({ children }) {
     source: "",
   });
   const currentAccount = useCurrentAccount();
+
+  // Auto-login when dApp Kit connects
+  useEffect(() => {
+    if (currentAccount?.address) {
+       const addr = normalizeAddress(currentAccount.address);
+       if (user?.walletAddress !== addr) {
+         console.log("Auto-login triggered for connected wallet:", addr);
+         login("issuer", { walletAddress: addr }, { useDefaults: false });
+       }
+    }
+  }, [currentAccount, user, login]);
 
   const syncedAddress = normalizeAddress(state.address);
 

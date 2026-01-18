@@ -1,6 +1,7 @@
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Landing from "./pages/Landing";
+import Register from "./pages/Register"; // New page
 import PublicProfile from "./pages/PublicProfile";
 import RecruiterLayout from "./layouts/RecruiterLayout";
 import CandidateLayout from "./layouts/CandidateLayout";
@@ -38,6 +39,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
+      <Route path="/register" element={<Register />} />
       <Route path="/u/:candidateId" element={<PublicProfile />} />
 
       <Route

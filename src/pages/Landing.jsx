@@ -13,6 +13,7 @@ import {
     ArrowRight,
     Sparkles,
 } from "lucide-react";
+import { ConnectButton } from "@mysten/dapp-kit";
 import toast from "react-hot-toast";
 
 const roles = [
@@ -56,7 +57,19 @@ function Landing() {
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState({});
     const navigate = useNavigate();
-    const { login } = useAuth();
+    const { login, user } = useAuth();
+
+    // Redirect if logged in
+    React.useEffect(() => {
+        if (user) {
+            // Check registration status if available
+            if (user.isRegistered === false) {
+                 navigate("/register");
+            } else {
+                 navigate(redirectMap[user.role || "issuer"]);
+            }
+        }
+    }, [user, navigate]);
 
     const getStoredNameForEmail = (email) => {
         if (!email) return "";
@@ -104,36 +117,23 @@ function Landing() {
 
         setLoading(true);
         try {
+            // NOTE: Mock login (Email/Pass) is disabled for production chain validation.
+            // Users should use Wallet Connection via the header button to login properly.
             if (tab === "login") {
-                const storedName = getStoredNameForEmail(trimmedEmail);
-                const derivedName = storedName || trimmedEmail?.split("@")[0] || "Guest";
-                await login(
-                    role,
-                    { name: derivedName, username: storedName || "", email: trimmedEmail },
-                    { useDefaults: false }
-                );
-                toast.success("Signed in");
+                 // Warn user to use Wallet
+                 toast("Please connect your Wallet to login securely.", { icon: "🔒" });
+                 // OPTIONAL: Still allow mock for demo if needed, but the user asked to fix the 'unregistered login' issue.
+                 // We will block explicit mock login for consistency with the prompt.
+                 setLoading(false);
+                 return;
             } else {
-                const payload = {
-                    name: trimmedUsername,
-                    username: trimmedUsername,
-                    email: trimmedEmail,
-                    mobile: trimmedMobile,
-                    dob: isCandidate ? form.dob : undefined,
-                    cccd: isCandidate ? form.cccd?.trim() : undefined,
-                };
-                await login(role, payload, { useDefaults: false });
-                toast.success("Account created");
+                // ... registration form ...
+                // This is also a mock registration (local storage).
+                // Real registration happens inside the dashboard via blockchain transaction.
+                toast("Please connect your Wallet to create an account on-chain.", { icon: "🔗" });
+                setLoading(false);
+                return;
             }
-            setForm({
-                username: "",
-                email: "",
-                dob: "",
-                mobile: "",
-                password: "",
-                cccd: "",
-            });
-            navigate(redirectMap[role] || "/");
         } catch (err) {
             toast.error("Sign-in failed");
         } finally {
@@ -165,6 +165,9 @@ function Landing() {
                     <div className="hidden md:flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
                         <ShieldCheck className="h-4 w-4 text-navy-500" />
                         Private-by-default
+                    </div>
+                    <div className="md:ml-4">
+                        <ConnectButton />
                     </div>
                 </header>
 

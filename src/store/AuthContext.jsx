@@ -57,7 +57,7 @@ export function AuthProvider({ children }) {
 
   const login = (role, payload = {}, options = {}) =>
     new Promise((resolve) => {
-      setTimeout(() => {
+      setTimeout(async () => {
         // If payload has a wallet address, we MUST use it as the ID and not fallback to mock ID.
         // This ensures every wallet is treated as a unique user.
         const id = payload.walletAddress || payload.id || crypto.randomUUID();
@@ -81,24 +81,33 @@ export function AuthProvider({ children }) {
              Object.assign(resolved, def);
         }
 
-        // --- BLOCKCHAIN CHECK ---
-        // Verify if this user is actually registered on-chain
+        // --- BLOCKCHAIN CHECK & GATING ---
         if (payload.walletAddress) {
           console.group(`🔗 Checking Blockchain Status for [${role}]`);
           console.log(`Wallet: ${payload.walletAddress}`);
           
-          if (role === 'issuer') {
-             blockchainService.getIssuerByAddress(payload.walletAddress)
-               .then(issuer => {
-                 if (issuer) {
-                   console.log("✅ ON-CHAIN: User is a registered ISSUER.", issuer);
-                 } else {
-                   console.warn("⚠️ ON-CHAIN: User is NOT registered as an issuer.");
-                 }
-               })
-               .catch(err => console.error("❌ Blockchain Query Failed:", err));
-          } else {
-             console.log("ℹ️ Blockchain check skipped (role not fully integrated yet)");
+          let isRegistered = false;
+
+          try {
+            if (role === 'issuer') {
+               const issuer = await blockchainService.getIssuerByAddress(payload.walletAddress);
+               if (issuer) {
+                 console.log("✅ ON-CHAIN: User is a registered ISSUER.", issuer);
+                 isRegistered = true;
+                 resolved.isRegistered = true;
+               } else {
+                 console.warn("⚠️ ON-CHAIN: User is NOT registered.");
+                 resolved.isRegistered = false;
+               }
+            } else {
+               // For other roles, assume unregistered or implement check
+               // For now, allow candidates through or block them? 
+               // User asked: "if they didn't register they can not login"
+               resolved.isRegistered = false; 
+            }
+          } catch (err) {
+             console.error("Check failed", err);
+             resolved.isRegistered = false;
           }
           console.groupEnd();
         }
